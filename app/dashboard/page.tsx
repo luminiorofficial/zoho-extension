@@ -1,88 +1,158 @@
-import { Layout, Dashboard, DepartmentCard, ProgressBar } from '@/components';
+import {
+  Building2,
+  CheckSquare,
+  Target,
+  Users,
+} from 'lucide-react';
+
+import {
+  DepartmentCard,
+  Layout,
+} from '@/components';
+
+import { mockData } from '@/data/mockData';
 
 export default function DashboardPage() {
-  // Fetch departments from mock data
-  const departments = window.__NEXT_DATA__.props.params.departments || (window.__NEXT_DATA__.pageData.departments || window.__NEXT_DATA__.pageData.mockData.departments);
+  const departments = mockData.departments;
 
-  // Calculate summary statistics
-  const totalDepartments = departments.length;
-  const totalGoals = departments.reduce((sum, dept) => sum + dept.goals.length, 0);
-  const totalActions = departments.reduce((sum, dept) => sum + dept.goals.reduce((sum2, goal) => sum2 + goal.actions.length, 0), 0);
-  const totalMembers = departments.reduce((sum, dept) => sum + dept.memberIds.length, 0);
+  const totalGoals = departments.reduce(
+    (total, department) =>
+      total + department.goals.length,
+    0
+  );
 
-  // Calculate overall progress
-  const departmentProgresses = departments.map(dept => dept.progress);
-  const overallProgress = Math.round(departmentProgresses.reduce((a, b) => a + b, 0) / departmentProgresses.length);
+  const totalActions = departments.reduce(
+    (total, department) =>
+      total +
+      department.goals.reduce(
+        (goalTotal, goal) =>
+          goalTotal + goal.actions.length,
+        0
+      ),
+    0
+  );
+
+  const totalMembers = mockData.members.length;
+
+  const overallProgress =
+    departments.length > 0
+      ? Math.round(
+          departments.reduce(
+            (total, department) =>
+              total + department.progress,
+            0
+          ) / departments.length
+        )
+      : 0;
+
+  const stats = [
+    {
+      name: 'Departments',
+      value: departments.length,
+      icon: Building2,
+    },
+    {
+      name: 'Goals',
+      value: totalGoals,
+      icon: Target,
+    },
+    {
+      name: 'Tasks',
+      value: totalActions,
+      icon: CheckSquare,
+    },
+    {
+      name: 'Members',
+      value: totalMembers,
+      icon: Users,
+    },
+  ];
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-xl font-semibold text-zinc-800">
-              Total Departments
-            </h3>
-            <div className="mb-2">
-              <ProgressBar value={totalDepartments} max={totalDepartments} size="sm" label />
-            </div>
-            <p className="text-sm text-zinc-600">{totalDepartments}</p>
-          </div>
 
-          <div>
-            <h3 className="text-xl font-semibold text-zinc-800">
-              Total Goals
-            </h3>
-            <div className="mb-2">
-              <ProgressBar value={totalGoals} max={totalGoals} size="sm" label />
-            </div>
-            <p className="text-sm text-zinc-600">{totalGoals}</p>
-          </div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">
+          Dashboard
+        </h1>
 
-          <div>
-            <h3 className="text-xl font-semibold text-zinc-800">
-              Total Actions
-            </h3>
-            <div className="mb-2">
-              <ProgressBar value={totalActions} max={totalActions} size="sm" label />
-            </div>
-            <p className="text-sm text-zinc-600">{totalActions}</p>
-          </div>
-
-          <div>
-            <h3 className="text-xl font-semibold text-zinc-800">
-              Total Members
-            </h3>
-            <div className="mb-2">
-              <ProgressBar value={totalMembers} max={totalMembers} size="sm" label />
-            </div>
-            <p className="text-sm text-zinc-600">{totalMembers}</p>
-          </div>
-        </div>
-
-        {/* Department Progress Overview */}
-        <div className="mt-8 grid grid-cols-2 gap-6">
-          {departments.map(dept => (
-            <div key={dept.id} className="border border-zinc-200 rounded-lg shadow-sm p-4">
-              <h3 className="text-xl font-semibold text-zinc-800 mb-2">{dept.name}</h3>
-              <div className="flex flex-col items-start justify-between mb-2">
-                <p className="text-sm text-zinc-500">{{department.id}} members</p>
-                <p className="text-sm text-zinc-500">{{dept.goals.length}} goals</p>
-              </div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-medium text-sm text-zinc-800">{{percentageCalculation(dept.progress)}}</span>
-                <ProgressBar value={dept.progress} size="sm" />
-              </div>
-              <p className="text-sm text-zinc-600">{dept.description || 'Department overview'}</p>
-              <a href={`/departments/${dept.id}`} className="text-blue-500 hover:text-blue-700 font-medium">View Department</a>
-            </div>
-          ))}
-        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Organisation-wide department and goal overview.
+        </p>
       </div>
+
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+
+        {stats.map((stat) => {
+          const Icon = stat.icon;
+
+          return (
+            <div
+              key={stat.name}
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+            >
+
+              <div className="flex items-center justify-between">
+
+                <div>
+                  <p className="text-sm text-slate-500">
+                    {stat.name}
+                  </p>
+
+                  <p className="mt-2 text-3xl font-bold text-slate-900">
+                    {stat.value}
+                  </p>
+                </div>
+
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <Icon size={21} />
+                </div>
+
+              </div>
+
+            </div>
+          );
+        })}
+
+      </div>
+
+      <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6">
+
+        <p className="text-sm text-slate-500">
+          Overall Progress
+        </p>
+
+        <p className="mt-1 text-3xl font-bold text-slate-900">
+          {overallProgress}%
+        </p>
+
+      </div>
+
+      <div className="mt-8">
+
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Department Overview
+          </h2>
+
+          <p className="text-sm text-slate-500">
+            Track department-wise goals and task progress.
+          </p>
+        </div>
+
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+
+          {departments.map((department) => (
+            <DepartmentCard
+              key={department.id}
+              department={department}
+            />
+          ))}
+
+        </div>
+
+      </div>
+
     </Layout>
   );
-}
-
-function percentageCalculation(progress: number): string {
-  return `${Math.round(progress)}%`;
 }

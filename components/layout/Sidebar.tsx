@@ -4,108 +4,108 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  Users,
   Building2,
+  Users,
   Settings,
-  ChevronLeft,
-  ChevronRight,
+  Target,
 } from 'lucide-react';
-import { useState } from 'react';
-
-interface SidebarProps {
-  className?: string;
-}
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Departments', href: '/departments', icon: Building2 },
-  { name: 'Members', href: '/members', icon: Users },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  {
+    name: 'Dashboard',
+    href: '/dashboard',
+    icon: LayoutDashboard,
+  },
+  {
+    name: 'Departments',
+    href: '/departments',
+    icon: Building2,
+  },
+  {
+    name: 'Members',
+    href: '/members',
+    icon: Users,
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
+  },
 ];
 
-export default function Sidebar({ className }: SidebarProps) {
+export default function Sidebar() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <aside
-      className={`fixed left-0 top-0 z-40 h-screen bg-white border-r border-zinc-200 transition-all duration-200 ${
-        collapsed ? 'w-16' : 'w-64'
-      } ${className || ''}`}
-      aria-label="Main navigation"
-    >
+    <aside className="fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-200 bg-white">
       <div className="flex h-full flex-col">
-        {/* Logo / Brand */}
-        <div
-          className={`flex h-16 items-center justify-between px-4 border-b border-zinc-200 transition-all duration-200 ${
-            collapsed ? 'justify-center' : ''
-          }`}
-        >
-          {!collapsed && (
-            <Link href="/dashboard" className="flex items-center gap-2 text-xl font-semibold text-zinc-900">
-              <Building2 className="h-6 w-6 text-blue-600" aria-hidden="true" />
-              <span>GoalManager</span>
-            </Link>
-          )}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 transition-colors"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-expanded={!collapsed}
+
+        <div className="flex h-20 items-center border-b border-slate-200 px-6">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-3"
           >
-            {collapsed ? (
-              <ChevronRight className="h-5 w-5" aria-hidden="true" />
-            ) : (
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-            )}
-          </button>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+              <Target size={20} />
+            </div>
+
+            <div>
+              <h1 className="font-bold text-slate-900">
+                Goal Manager
+              </h1>
+
+              <p className="text-xs text-slate-500">
+                Zoho Extension
+              </p>
+            </div>
+          </Link>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2" aria-label="Main navigation">
-          <ul className="space-y-1" role="list">
+        <nav className="flex-1 p-4">
+          <div className="space-y-1">
             {navigation.map((item) => {
-              const isActive = pathname === item.href;
+              const active =
+                pathname === item.href ||
+                (item.href !== '/dashboard' &&
+                  pathname.startsWith(`${item.href}/`));
+
+              const Icon = item.icon;
+
               return (
-                <li key={item.name}>
-                  <Link
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                    } ${collapsed ? 'justify-center' : ''}`}
-                    aria-current={isActive ? 'page' : undefined}
-                    title={collapsed ? item.name : undefined}
-                  >
-                    <item.icon
-                      className="h-5 w-5 flex-shrink-0"
-                      aria-hidden="true"
-                    />
-                    {!collapsed && <span>{item.name}</span>}
-                  </Link>
-                </li>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition ${
+                    active
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <Icon size={19} />
+
+                  {item.name}
+                </Link>
               );
             })}
-          </ul>
+          </div>
         </nav>
 
-        {/* Footer / User section placeholder */}
-        <div
-          className={`border-t border-zinc-200 p-4 transition-all duration-200 ${
-            collapsed ? 'hidden' : 'block'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <span className="text-sm font-medium text-blue-700">U</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-900 truncate">User Name</p>
-              <p className="text-xs text-zinc-500 truncate">user@example.com</p>
+        <div className="border-t border-slate-200 p-4">
+          <div className="rounded-lg bg-slate-50 p-3">
+            <p className="text-xs font-medium text-slate-500">
+              Integration Status
+            </p>
+
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-amber-500" />
+
+              <span className="text-sm text-slate-700">
+                Zoho not connected
+              </span>
             </div>
           </div>
         </div>
+
       </div>
     </aside>
   );

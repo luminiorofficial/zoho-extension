@@ -1,75 +1,110 @@
-'use client';
-
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { DepartmentCardProps } from '@/types';
+import {
+  ArrowRight,
+  Target,
+  Users,
+} from 'lucide-react';
+
+import ProgressBar from '@/components/common/ProgressBar';
+import type { DepartmentCardProps } from '@/types';
 
 export default function DepartmentCard({
   department,
-  onActionClick,
 }: DepartmentCardProps) {
-  const router = useRouter();
+  const temporary = department.id.startsWith('temp-');
 
   return (
-    <div
-      className={cn(
-        'rounded-lg bg-white shadow-sm hover:shadow-sm-hover border border-zinc-100',
-        'overflow-hidden flex flex-col'
-      )}
-    >
-      <div className="flex flex-col flex-1 items-start justify-between py-4 px-4">
-        <div className="overflow-hidden justify-between h-16">
-          <div className="flex flex-col">
-            <h2 className="text-lg font-semibold text-neutral-800">
-              {department.name}
-            </h1>
-            {onActionClick && <span>→</span>}
-          </div>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+
+      <div className="flex items-start justify-between">
+
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">
+            {department.name}
+          </h3>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {department.description}
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 py-4">
-          <div>
-            <p className="text-sm text-zinc-500">
-              <span className="font-medium">Members:</span> {department.memberIds.length}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-zinc-500">
-              <span className="font-medium">Goals:</span> {department.goals.length}
-            </p>
-          </div>
-        </div>
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+            department.isActive
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-slate-100 text-slate-500'
+          }`}
+        >
+          {department.isActive ? 'Active' : 'Inactive'}
+        </span>
 
-        <div className="flex items-center mb-3">
-          <span className="font-medium text-sm text-neutral-700">
-            {department.description || 'Managing department operations'}
-          </span>
-        </div>
-
-        <div className="mt-4 flex justify-between items-center">
-          <span className="font-medium text-lg text-neutral-800">
-            {percentageCalculation(department.progress)}
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {department.goals.slice(0, 3).map(goal => (
-              <Link
-                key={goal.id}
-                href={`/departments/${department.id}/goals/${goal.id}`}
-                className={cn(
-                  'text-blue-500 hover:text-blue-700 text-sm truncate',
-                  'break-all min-w-[120px]'
-                )}
-              >
-                {goal.title}
-              </Link>
-            ))}
-          </div>
-        </div>
       </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+
+        <div className="rounded-lg bg-slate-50 p-3">
+          <div className="flex items-center gap-2 text-slate-500">
+            <Users size={16} />
+            <span className="text-xs">
+              Members
+            </span>
+          </div>
+
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {department.memberIds.length}
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-slate-50 p-3">
+          <div className="flex items-center gap-2 text-slate-500">
+            <Target size={16} />
+            <span className="text-xs">
+              Goals
+            </span>
+          </div>
+
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {department.goals.length}
+          </p>
+        </div>
+
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 flex justify-between">
+          <span className="text-sm text-slate-500">
+            Department progress
+          </span>
+
+          <span className="text-sm font-semibold text-slate-700">
+            {department.progress}%
+          </span>
+        </div>
+
+        <ProgressBar
+          value={department.progress}
+          size="sm"
+        />
+      </div>
+
+      <div className="mt-5 border-t border-slate-100 pt-4">
+
+        {temporary ? (
+          <span className="text-sm text-amber-600">
+            Temporary UI department
+          </span>
+        ) : (
+          <Link
+            href={`/departments/${department.id}`}
+            className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+          >
+            View Department
+            <ArrowRight size={15} />
+          </Link>
+        )}
+
+      </div>
+
     </div>
   );
-}
-
-function percentageCalculation(progress: number): string {
-  return `${Math.round(progress)}%`;
 }

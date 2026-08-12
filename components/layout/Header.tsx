@@ -1,63 +1,68 @@
 'use client';
 
-import { useSession } from 'next-auth/client';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Settings } from 'lucide-react';
+import { Bell, Search } from 'lucide-react';
 
-interface HeaderProps {
-  className?: string;
+function getPageTitle(pathname: string) {
+  if (pathname.startsWith('/departments')) {
+    return 'Departments';
+  }
+
+  if (pathname.startsWith('/members')) {
+    return 'Members';
+  }
+
+  if (pathname.startsWith('/settings')) {
+    return 'Settings';
+  }
+
+  return 'Dashboard';
 }
 
-export default function Header({ className }: HeaderProps) {
-  const session = useSession();
+export default function Header() {
   const pathname = usePathname();
-  const isHome = pathname === '/dashboard' || pathname === '/'; // Check if this is the home/dashboard page
+
+  const title = getPageTitle(pathname);
 
   return (
-    <header className={{ className, ...(
-      isHome
-        ? {
-            borderBottom: '1px solid var(--blue-200)',
-          }
-        : {}
-    )}} bg-white shadow-md backdrop-filter blur-sm backdrop-blur-sm-md transition-all duration-200 min-h-[48px]">
-      <div className="container mx-auto px-6 py-2 flex items-center justify-between">
-        {isHome ? (
-          <h1 className="font-extrabold text-lg text-black mb-4 relative">
-            <Link href="/dashboard">
-              <span className="text-neutral-600 font-semibold text-xs md:text-sm" data-testid="registry-title">Goal</span>Manager</Link>
-            </h1>
-          )
-        : null}
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200 bg-white px-8">
 
-        <nav className="flex items-center space-x-4">
-          <Link href="/departments" className="text-gray-600 hover:text-blue-500 rounded-md py-1 px-4">
-            {isHome ? 'Departments' : ''}
-          </Link>
-          <Link href="/members" className="text-gray-600 hover:text-blue-500 rounded-md py-1 px-4">
-            {isHome ? 'Members' : ''}
-          </Link>
-          <Link href="/settings" className="text-gray-600 hover:text-blue-500 rounded-md py-1 px-4">
-            Settings
-          </Link>
-        </nav>
+      <div>
+        <h2 className="text-xl font-semibold text-slate-900">
+          {title}
+        </h2>
 
-        <div className="flex items-center">
-          {session ? (
-            <div className="flex items-center gap-2 rounded-md py-1 px-3 text-gray-400 hover:bg-gray-50 hover:text-gray-800 rounded-lg">
-              <img
-                className="h-6 w-6 rounded-full hover:shadow-sm shadow-base"
-                src={session.user?.image}
-                alt="User Profile"
-                decoded
-              />
-              <span className="font-medium text-sm truncate">
-                {session.user?.name}</span>
-            </div>
-          ) : (}
-          </div>
+        <p className="text-sm text-slate-500">
+          Department Goal Management
+        </p>
+      </div>
+
+      <div className="flex items-center gap-4">
+
+        <div className="relative hidden lg:block">
+          <Search
+            size={17}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+
+          <input
+            type="text"
+            placeholder="Search..."
+            className="w-64 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500"
+          />
         </div>
+
+        <button
+          type="button"
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+        >
+          <Bell size={18} />
+        </button>
+
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+          U
+        </div>
+
       </div>
     </header>
   );

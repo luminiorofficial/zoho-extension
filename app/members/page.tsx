@@ -1,16 +1,82 @@
 import { Layout } from '@/components';
-import MemberList from '@/app/members/components/memberlist';
+import { mockData } from '@/data/mockData';
 
 export default function MembersPage() {
   return (
     <Layout>
-      <div className="container mx-auto px-8 py-4 max-w-full pt-24">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Members</h1>
-        </header>
 
-        <MemberList />
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">
+          Members
+        </h1>
+
+        <p className="mt-1 text-sm text-slate-500">
+          Organisation members and department assignments.
+        </p>
       </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+
+        <table className="w-full">
+
+          <thead className="border-b border-slate-200 bg-slate-50">
+            <tr>
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">
+                Name
+              </th>
+
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">
+                Email
+              </th>
+
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">
+                Role
+              </th>
+
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">
+                Department
+              </th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-slate-100">
+
+            {mockData.members.map((member) => {
+              const department =
+                mockData.departments.find(
+                  (item) =>
+                    item.id === member.departmentId
+                );
+
+              return (
+                <tr key={member.id}>
+
+                  <td className="px-5 py-4 font-medium text-slate-900">
+                    {member.name}
+                  </td>
+
+                  <td className="px-5 py-4 text-sm text-slate-500">
+                    {member.email}
+                  </td>
+
+                  <td className="px-5 py-4 text-sm text-slate-600">
+                    {member.role}
+                  </td>
+
+                  <td className="px-5 py-4 text-sm text-slate-600">
+                    {department?.name ?? 'Unassigned'}
+                  </td>
+
+                </tr>
+              );
+            })}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
     </Layout>
   );
 }

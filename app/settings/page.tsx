@@ -1,61 +1,63 @@
-import { Layout, Sidebar, Header, ProgressBar } from '@/components';
+import { Layout } from '@/components';
 
 export default function SettingsPage() {
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto p-6">
-        <h1 className="text-2xl font-bold text-zinc-800 mb-6">Settings</h1>
 
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-zinc-800 mb-4">Organisation</h2>
-            <p className="text-zinc-500 text-sm mb-4">
-              Configure organisation-wide settings.
-            </p>
-            <div className="bg-zinc-50 rounded-lg p-4">
-              <p className="text-sm text-zinc-600">
-                Organisation name and branding settings will be configured here.
-              </p>
-            </div>
-          </div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">
+          Settings
+        </h1>
 
-          <div>
-            <h2 className="text-xl font-semibold text-zinc-800 mb-4">Department Settings</h2>
-            <p className="text-zinc-500 text-sm mb-4">
-              Manage department-level configurations.
-            </p>
-            <div className="bg-zinc-50 rounded-lg p-4">
-              <p className="text-sm text-zinc-600">
-                Department configuration settings will appear here.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-zinc-800 mb-4">Goal Rules</h2>
-            <p className="text-zinc-500 text-sm mb-4">
-              Define default goal creation rules and policies.
-            </p>
-            <div className="bg-zinc-50 rounded-lg p-4">
-              <p className="text-sm text-zinc-600">
-                Goal rules and templates will be configured here.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-zinc-800 mb-4">User Roles</h2>
-            <p className="text-zinc-500 text-sm mb-4">
-              Assign and manage user roles and permissions.
-            </p>
-            <div className="bg-zinc-50 rounded-lg p-4">
-              <p className="text-sm text-zinc-600">
-                User role assignments will appear here.
-              </p>
-            </div>
-          </div>
-        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Organisation and integration settings.
+        </p>
       </div>
+
+      <div className="space-y-5">
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6">
+
+          <h2 className="font-semibold text-slate-900">
+            Organisation
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Organisation information and preferences will be managed here.
+          </p>
+
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6">
+
+          <h2 className="font-semibold text-slate-900">
+            Zoho Projects Integration
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Zoho authentication and API configuration will be added after the UI is finalised.
+          </p>
+
+          <div className="mt-4 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+            Not Connected
+          </div>
+
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6">
+
+          <h2 className="font-semibold text-slate-900">
+            Roles & Permissions
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Admin, department head and team member permissions will be configured later.
+          </p>
+
+        </section>
+
+      </div>
+
     </Layout>
   );
 }
