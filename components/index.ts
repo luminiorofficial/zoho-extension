@@ -18,3 +18,6 @@ export { default as MemberWorkClient } from './members/MemberWorkClient';
 export { default as ProjectForm } from './projects/ProjectForm';
 export { default as ProjectsClient } from './projects/ProjectsClient';
 export { default as ProjectDetailClient } from './projects/ProjectDetailClient';
+
+export { default as CapacityBadge } from './workload/CapacityBadge';
+export { default as WorkloadClient } from './workload/WorkloadClient';

@@ -101,6 +101,7 @@ export async function POST(request: Request) {
     revalidatePath(`/departments/${task.departmentId}`);
     revalidatePath(`/projects/${task.projectId}`);
     revalidatePath('/projects');
+    revalidatePath('/workload');
     revalidatePath('/dashboard');
 
     return Response.json({ task }, { status: 201 });

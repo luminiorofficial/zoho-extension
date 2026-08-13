@@ -7,7 +7,7 @@ import { FolderKanban, Plus, Users } from 'lucide-react';
 import ProgressBar from '@/components/common/ProgressBar';
 import StatusBadge from '@/components/common/StatusBadge';
 import ProjectForm from '@/components/projects/ProjectForm';
-import { PROJECT_STATUSES, type Project } from '@/types';
+import { PROJECT_STATUSES, type MemberWorkload, type Project } from '@/types';
 
 interface ProjectsClientProps {
   projects: Project[];
@@ -15,7 +15,7 @@ interface ProjectsClientProps {
     id: string;
     name: string;
     goals: { id: string; title: string }[];
-    members: { id: string; name: string }[];
+    members: MemberWorkload[];
   }[];
   members: { id: string; name: string }[];
   initialDepartmentId?: string;

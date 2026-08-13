@@ -137,6 +137,7 @@ export async function POST(request: Request) {
     await client.query('COMMIT');
 
     revalidatePath('/projects');
+    revalidatePath('/workload');
     revalidatePath(`/departments/${payload.departmentId}`);
     revalidatePath('/departments');
 

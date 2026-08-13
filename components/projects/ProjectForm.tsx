@@ -2,12 +2,17 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AlertTriangle } from 'lucide-react';
+
+import CapacityBadge from '@/components/workload/CapacityBadge';
+import { getCapacityStatus, MAX_ACTIVE_PROJECTS } from '@/lib/capacity';
+import type { MemberWorkload } from '@/types';
 
 interface ProjectFormDepartment {
   id: string;
   name: string;
   goals: { id: string; title: string }[];
-  members: { id: string; name: string }[];
+  members: MemberWorkload[];
 }
 
 interface ProjectFormProps {
@@ -53,9 +58,25 @@ export default function ProjectForm({
   const selectedGoalId = department?.goals.some((goal) => goal.id === goalId)
     ? goalId
     : (department?.goals[0]?.id ?? '');
-  const selectedOwnerId = department?.members.some((member) => member.id === ownerId)
+  const selectedOwnerId = department?.members.some((member) => member.memberId === ownerId)
     ? ownerId
-    : (department?.members[0]?.id ?? '');
+    : (department?.members[0]?.memberId ?? '');
+  const selectedMemberIds = new Set([selectedOwnerId, ...memberIds].filter(Boolean));
+  const createsActiveAllocation = ['ACTIVE', 'INTERNAL_REVIEW', 'CLIENT_REVIEW', 'CLOSURE_PENDING'].includes(status);
+  const assignmentWarnings = (department?.members ?? []).flatMap((member) => {
+    if (!selectedMemberIds.has(member.memberId)) return [];
+    const activeProjectCount = member.activeProjectCount + (createsActiveAllocation ? 1 : 0);
+    const projectedStatus = getCapacityStatus({ ...member, activeProjectCount });
+    const warnings: string[] = [];
+
+    if (activeProjectCount > MAX_ACTIVE_PROJECTS) {
+      warnings.push(`${member.memberName} would have ${activeProjectCount} active projects, above the recommended maximum of ${MAX_ACTIVE_PROJECTS}.`);
+    }
+    if (member.capacityStatus === 'Overloaded' || projectedStatus === 'Overloaded') {
+      warnings.push(`${member.memberName} is ${projectedStatus.toLowerCase()} based on current and projected workload.`);
+    }
+    return warnings;
+  });
 
   function toggleMember(memberId: string) {
     setMemberIds((current) => current.includes(memberId)
@@ -65,6 +86,9 @@ export default function ProjectForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (assignmentWarnings.length && !window.confirm(`${assignmentWarnings.join('\n')}\n\nAssign anyway?`)) {
+      return;
+    }
     setPending(true);
     setError('');
 
@@ -148,7 +172,7 @@ export default function ProjectForm({
         <label className="text-sm font-medium text-slate-700">
           Owner
           <select required value={selectedOwnerId} onChange={(event) => setOwnerId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
-            {department?.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+            {department?.members.map((member) => <option key={member.memberId} value={member.memberId}>{member.memberName} · {member.capacityStatus}</option>)}
           </select>
         </label>
 
@@ -185,18 +209,39 @@ export default function ProjectForm({
         </label>
 
         <fieldset className="md:col-span-2 xl:col-span-3">
-          <legend className="text-sm font-medium text-slate-700">Assigned members</legend>
-          <p className="mt-1 text-xs text-slate-500">The owner is included automatically.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {department?.members.map((member) => (
-              <label key={member.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                <input type="checkbox" checked={memberIds.includes(member.id) || member.id === selectedOwnerId} disabled={member.id === selectedOwnerId} onChange={() => toggleMember(member.id)} />
-                {member.name}
-              </label>
-            ))}
+          <legend className="text-sm font-medium text-slate-700">Assigned members and current workload</legend>
+          <p className="mt-1 text-xs text-slate-500">The owner is included automatically. Active projects count toward the three-project recommendation.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {department?.members.map((member) => {
+              const selected = selectedMemberIds.has(member.memberId);
+              const activeProjectCount = member.activeProjectCount + (selected && createsActiveAllocation ? 1 : 0);
+              const projectedStatus = getCapacityStatus({ ...member, activeProjectCount });
+              const warning = selected && (projectedStatus === 'Overloaded' || activeProjectCount > MAX_ACTIVE_PROJECTS);
+              return (
+                <label key={member.memberId} className={`rounded-lg border p-3 text-sm ${warning ? 'border-red-300 bg-red-50' : selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200'}`}>
+                  <span className="flex items-start gap-2">
+                    <input type="checkbox" className="mt-1" checked={selected} disabled={member.memberId === selectedOwnerId} onChange={() => toggleMember(member.memberId)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-slate-800">{member.memberName}</span><CapacityBadge status={member.capacityStatus} /></span>
+                      <span className="mt-2 block text-xs text-slate-600">{member.activeProjectCount} active projects · {member.openTaskCount} open tasks · {member.dueThisWeekTaskCount} due this week</span>
+                      {selected && createsActiveAllocation && <span className="mt-2 block text-xs font-medium text-slate-700">After assignment: {activeProjectCount} active · {projectedStatus}</span>}
+                      {warning && <span className="mt-2 flex gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="shrink-0" size={14} /> Assignment needs capacity review.</span>}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </fieldset>
       </div>
+
+      {assignmentWarnings.length > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="flex items-center gap-2 font-semibold"><AlertTriangle size={17} /> Capacity warning</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">{assignmentWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          <p className="mt-2 text-xs">This is a soft warning; Admin can confirm and continue.</p>
+        </div>
+      )}
 
       {(!department?.goals.length || !department.members.length) && (
         <p className="mt-4 text-sm text-amber-700">This department needs at least one goal and member before a project can be created.</p>

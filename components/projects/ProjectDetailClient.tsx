@@ -3,16 +3,18 @@
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, CheckCircle2, Circle, ClipboardCheck, Pencil, Users, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Circle, ClipboardCheck, Pencil, Users, X } from 'lucide-react';
 
 import ProgressBar from '@/components/common/ProgressBar';
 import StatusBadge from '@/components/common/StatusBadge';
-import { PROJECT_STATUSES, type ProjectDetail } from '@/types';
+import CapacityBadge from '@/components/workload/CapacityBadge';
+import { getCapacityStatus, isActiveProjectStatus, MAX_ACTIVE_PROJECTS } from '@/lib/capacity';
 import { PROJECT_STATUS_VALUES } from '@/lib/project-constants';
+import { PROJECT_STATUSES, type MemberWorkload, type ProjectDetail } from '@/types';
 
 interface ProjectDetailClientProps {
   project: ProjectDetail;
-  departmentMembers: { id: string; name: string }[];
+  departmentMembers: MemberWorkload[];
 }
 
 const fieldClass = 'mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5';
@@ -34,7 +36,7 @@ export default function ProjectDetailClient({ project, departmentMembers }: Proj
   const [name, setName] = useState(project.name);
   const [jobCode, setJobCode] = useState(project.jobCode ?? '');
   const [description, setDescription] = useState(project.description ?? '');
-  const [ownerId, setOwnerId] = useState(project.ownerId ?? departmentMembers[0]?.id ?? '');
+  const [ownerId, setOwnerId] = useState(project.ownerId ?? departmentMembers[0]?.memberId ?? '');
   const [memberIds, setMemberIds] = useState(project.memberIds);
   const [startDate, setStartDate] = useState(project.startDate ?? '');
   const [deadline, setDeadline] = useState(project.deadline ?? '');
@@ -46,6 +48,40 @@ export default function ProjectDetailClient({ project, departmentMembers }: Proj
 
   const completedClosure = project.closureItems.filter((item) => item.completed).length;
   const allClosureComplete = project.closureItems.every((item) => !item.required || item.completed);
+  const selectedMemberIds = new Set([ownerId, ...memberIds].filter(Boolean));
+
+  function projectedCapacity(member: MemberWorkload) {
+    const wasCounted = project.memberIds.includes(member.memberId) && isActiveProjectStatus(project.status);
+    const willBeCounted = selectedMemberIds.has(member.memberId) && isActiveProjectStatus(status);
+    const activeProjectCount = Math.max(
+      0,
+      member.activeProjectCount + (willBeCounted ? 1 : 0) - (wasCounted ? 1 : 0),
+    );
+    return {
+      activeProjectCount,
+      status: getCapacityStatus({ ...member, activeProjectCount }),
+    };
+  }
+
+  const assignmentWarnings = departmentMembers.flatMap((member) => {
+    if (!selectedMemberIds.has(member.memberId)) return [];
+
+    const wasCounted = project.memberIds.includes(member.memberId) && isActiveProjectStatus(project.status);
+    const willBeCounted = isActiveProjectStatus(status);
+    const addsAssignment = !project.memberIds.includes(member.memberId) || (!wasCounted && willBeCounted);
+    if (!addsAssignment) return [];
+
+    const projected = projectedCapacity(member);
+    const warnings: string[] = [];
+
+    if (projected.activeProjectCount > MAX_ACTIVE_PROJECTS) {
+      warnings.push(`${member.memberName} would have ${projected.activeProjectCount} active projects, above the recommended maximum of ${MAX_ACTIVE_PROJECTS}.`);
+    }
+    if (member.capacityStatus === 'Overloaded' || projected.status === 'Overloaded') {
+      warnings.push(`${member.memberName} is ${projected.status.toLowerCase()} based on current and projected workload.`);
+    }
+    return warnings;
+  });
 
   function toggleMember(memberId: string) {
     if (memberId === ownerId) return;
@@ -54,6 +90,9 @@ export default function ProjectDetailClient({ project, departmentMembers }: Proj
 
   async function saveProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (assignmentWarnings.length && !window.confirm(`${assignmentWarnings.join('\n')}\n\nAssign anyway?`)) {
+      return;
+    }
     setPending(true);
     setError('');
     try {
@@ -120,17 +159,62 @@ export default function ProjectDetailClient({ project, departmentMembers }: Proj
             <label className="text-sm font-medium text-slate-700">Client name<input required value={clientName} onChange={(event) => setClientName(event.target.value)} className={fieldClass} /></label>
             <label className="text-sm font-medium text-slate-700">Project / Job name<input required value={name} onChange={(event) => setName(event.target.value)} className={fieldClass} /></label>
             <label className="text-sm font-medium text-slate-700">Job code<input required value={jobCode} onChange={(event) => setJobCode(event.target.value)} className={fieldClass} /></label>
-            <label className="text-sm font-medium text-slate-700">Owner<select value={ownerId} onChange={(event) => { setOwnerId(event.target.value); setMemberIds((current) => [...new Set([...current, event.target.value])]); }} className={fieldClass}>{departmentMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Owner<select value={ownerId} onChange={(event) => { setOwnerId(event.target.value); setMemberIds((current) => [...new Set([...current, event.target.value])]); }} className={fieldClass}>{departmentMembers.map((member) => <option key={member.memberId} value={member.memberId}>{member.memberName} · {member.capacityStatus}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Start date<input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={fieldClass} /></label>
             <label className="text-sm font-medium text-slate-700">Deadline<input required type="date" min={startDate} value={deadline} onChange={(event) => setDeadline(event.target.value)} className={fieldClass} /></label>
             <label className="text-sm font-medium text-slate-700">Status<select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className={fieldClass}>{PROJECT_STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Budget (INR)<input required type="number" min="0" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} className={fieldClass} /></label>
             <label className="text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-3">Description<textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} className={`${fieldClass} resize-none`} /></label>
             <fieldset className="md:col-span-2 xl:col-span-3">
-              <legend className="text-sm font-medium text-slate-700">Assigned members</legend>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{departmentMembers.map((member) => <label key={member.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"><input type="checkbox" checked={memberIds.includes(member.id) || member.id === ownerId} disabled={member.id === ownerId} onChange={() => toggleMember(member.id)} />{member.name}</label>)}</div>
+              <legend className="text-sm font-medium text-slate-700">Assigned members and current workload</legend>
+              <p className="mt-1 text-xs text-slate-500">Review live capacity before adding another member. The owner is always assigned.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {departmentMembers.map((member) => {
+                  const projected = projectedCapacity(member);
+                  const selected = selectedMemberIds.has(member.memberId);
+                  const newlyAssigned = selected && !project.memberIds.includes(member.memberId);
+                  const overProjectLimit = newlyAssigned
+                    && isActiveProjectStatus(status)
+                    && projected.activeProjectCount > MAX_ACTIVE_PROJECTS;
+                  const showOverloadWarning = newlyAssigned
+                    && (member.capacityStatus === 'Overloaded' || projected.status === 'Overloaded');
+
+                  return (
+                    <label key={member.memberId} className={`rounded-lg border p-3 text-sm ${showOverloadWarning || overProjectLimit ? 'border-red-300 bg-red-50' : selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200'}`}>
+                      <span className="flex items-start gap-2">
+                        <input type="checkbox" className="mt-1" checked={selected} disabled={member.memberId === ownerId} onChange={() => toggleMember(member.memberId)} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium text-slate-800">{member.memberName}</span>
+                            <CapacityBadge status={member.capacityStatus} />
+                          </span>
+                          <span className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-600">
+                            <span>{member.activeProjectCount} active projects</span>
+                            <span>{member.openTaskCount} open tasks</span>
+                            <span>{member.dueThisWeekTaskCount} due this week</span>
+                            <span>{member.completedThisWeekTaskCount} done this week</span>
+                          </span>
+                          {newlyAssigned && isActiveProjectStatus(status) && (
+                            <span className="mt-2 block text-xs font-medium text-slate-700">After assignment: {projected.activeProjectCount} active · {projected.status}</span>
+                          )}
+                          {(showOverloadWarning || overProjectLimit) && (
+                            <span className="mt-2 flex gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="shrink-0" size={14} /> Assignment needs capacity review.</span>
+                          )}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </fieldset>
           </div>
+          {assignmentWarnings.length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="flex items-center gap-2 font-semibold"><AlertTriangle size={17} /> Capacity warning</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">{assignmentWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+              <p className="mt-2 text-xs">This is a soft warning; Admin can confirm and continue.</p>
+            </div>
+          )}
           {status === 'Closed' && !allClosureComplete && <p className="mt-4 text-sm text-amber-700">Closed will be rejected until all required closure items are completed.</p>}
           <button type="submit" disabled={pending} className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{pending ? 'Saving…' : 'Save changes'}</button>
         </form>

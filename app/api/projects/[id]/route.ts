@@ -185,6 +185,7 @@ export async function PATCH(
 
     await client.query('COMMIT');
     revalidatePath('/projects');
+    revalidatePath('/workload');
     revalidatePath(`/projects/${id}`);
     revalidatePath(`/departments/${current.department_id}`);
     revalidatePath('/dashboard');

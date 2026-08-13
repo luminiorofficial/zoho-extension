@@ -9,6 +9,7 @@ import {
   Settings,
   Target,
   FolderKanban,
+  Gauge,
 } from 'lucide-react';
 
 const navigation = [
@@ -31,6 +32,11 @@ const navigation = [
     name: 'Projects',
     href: '/projects',
     icon: FolderKanban,
+  },
+  {
+    name: 'Workload',
+    href: '/workload',
+    icon: Gauge,
   },
   {
     name: 'Settings',

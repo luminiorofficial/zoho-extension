@@ -124,6 +124,7 @@ export async function PATCH(
     revalidatePath(`/departments/${task.departmentId}`);
     revalidatePath(`/projects/${task.projectId}`);
     revalidatePath('/projects');
+    revalidatePath('/workload');
     revalidatePath('/dashboard');
 
     return Response.json({ task });
@@ -170,6 +171,7 @@ export async function DELETE(
     revalidatePath(`/departments/${task.departmentId}`);
     revalidatePath(`/projects/${task.projectId}`);
     revalidatePath('/projects');
+    revalidatePath('/workload');
     revalidatePath('/dashboard');
 
     return Response.json({ deletedTaskId: task.id });

@@ -15,6 +15,15 @@ export const PROJECT_STATUSES = [
 
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
+export const CAPACITY_STATUSES = [
+  'Available',
+  'Normal',
+  'Busy',
+  'Overloaded',
+] as const;
+
+export type CapacityStatus = (typeof CAPACITY_STATUSES)[number];
+
 export type Priority =
   | 'Low'
   | 'Medium'
@@ -67,6 +76,30 @@ export interface Project {
   totalTasks: number;
   doneTasks: number;
   progress: number;
+}
+
+export interface ProjectAllocation {
+  id: string;
+  name: string;
+  jobCode?: string;
+  status: ProjectStatus;
+  deadline?: string;
+}
+
+export interface MemberWorkload {
+  memberId: string;
+  memberName: string;
+  email: string;
+  role: string;
+  departmentIds: string[];
+  departmentNames: string[];
+  activeProjectCount: number;
+  openTaskCount: number;
+  dueThisWeekTaskCount: number;
+  completedThisWeekTaskCount: number;
+  overdueTaskCount: number;
+  capacityStatus: CapacityStatus;
+  activeProjects: ProjectAllocation[];
 }
 
 export type ClosureItemKey =

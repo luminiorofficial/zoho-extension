@@ -16,6 +16,10 @@ function getPageTitle(pathname: string) {
     return 'Projects';
   }
 
+  if (pathname.startsWith('/workload')) {
+    return 'Workload';
+  }
+
   if (pathname.startsWith('/settings')) {
     return 'Settings';
   }

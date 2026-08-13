@@ -3,6 +3,9 @@ import path from 'node:path';
 
 import { Pool, type PoolClient } from 'pg';
 
+import { getCapacityStatus } from '../lib/capacity';
+import { MEMBER_WORKLOAD_QUERY } from '../lib/workload-query';
+
 function loadLocalEnvironment(): void {
   const envPath = path.join(process.cwd(), '.env.local');
   if (!fs.existsSync(envPath)) return;
@@ -128,14 +131,14 @@ async function run(): Promise<void> {
 
     const weekPlan = await client.query<{ id: string }>(
       `INSERT INTO week_plans (department_id, member_id, week_start)
-       VALUES ($1, $2, '2026-08-10') RETURNING id`,
+       VALUES ($1, $2, DATE_TRUNC('week', CURRENT_DATE)::date) RETURNING id`,
       [departmentId, memberId],
     );
     const weekGoal = await client.query<{ id: string }>(
       `INSERT INTO week_goals (
          week_plan_id, department_id, assigned_member_id, goal_id,
          action_id, project_id, week_start, title
-       ) VALUES ($1, $2, $3, $4, $5, $6, '2026-08-10', 'Project Test Week')
+       ) VALUES ($1, $2, $3, $4, $5, $6, DATE_TRUNC('week', CURRENT_DATE)::date, 'Project Test Week')
        RETURNING id`,
       [weekPlan.rows[0].id, departmentId, memberId, goal.rows[0].id, action.rows[0].id, projectId],
     );
@@ -144,10 +147,59 @@ async function run(): Promise<void> {
          week_goal_id, action_id, project_id, assigned_member_id,
          week_start, title, task_date, status
        ) VALUES
-         ($1, $2, $3, $4, '2026-08-10', 'Done task', '2026-08-10', 'DONE'),
-         ($1, $2, $3, $4, '2026-08-10', 'Active task', '2026-08-11', 'IN_PROGRESS'),
-         ($1, $2, $3, $4, '2026-08-10', 'Planned task', '2026-08-12', 'NOT_STARTED')`,
+         ($1, $2, $3, $4, DATE_TRUNC('week', CURRENT_DATE)::date, 'Done task', DATE_TRUNC('week', CURRENT_DATE)::date, 'DONE'),
+         ($1, $2, $3, $4, DATE_TRUNC('week', CURRENT_DATE)::date, 'Active task', DATE_TRUNC('week', CURRENT_DATE)::date + 1, 'IN_PROGRESS'),
+         ($1, $2, $3, $4, DATE_TRUNC('week', CURRENT_DATE)::date, 'Planned task', DATE_TRUNC('week', CURRENT_DATE)::date + 2, 'NOT_STARTED')`,
       [weekGoal.rows[0].id, action.rows[0].id, projectId, memberId],
+    );
+
+    const workload = await client.query<{
+      member_id: string;
+      active_project_count: number;
+      open_task_count: number;
+      due_this_week_task_count: number;
+      completed_this_week_task_count: number;
+      overdue_task_count: number;
+      active_projects: unknown[];
+    }>(MEMBER_WORKLOAD_QUERY, [[memberId]]);
+    assert(workload.rows.length === 1, 'Workload query must return the requested member only.');
+    assert(workload.rows[0].active_project_count === 1, 'Workload must count active project assignments.');
+    assert(workload.rows[0].open_task_count === 2, 'Workload must count non-Done daily tasks.');
+    assert(workload.rows[0].due_this_week_task_count === 2, 'Workload must count open tasks due this week.');
+    assert(workload.rows[0].completed_this_week_task_count === 1, 'Workload must count Done tasks dated this week.');
+    assert(workload.rows[0].active_projects.length === 1, 'Workload allocation must reuse the assigned project.');
+
+    await client.query(
+      `WITH inserted AS (
+         INSERT INTO projects (
+           department_id, goal_id, client_name, name, code, owner_member_id,
+           start_date, end_date, status, budget
+         )
+         SELECT $1, $2, 'Capacity Client', 'Capacity Project ' || series,
+                'JOB-CAP-' || series, $3, CURRENT_DATE, CURRENT_DATE + 30, 'ACTIVE', 100
+           FROM GENERATE_SERIES(1, 3) AS series
+         RETURNING id
+       )
+       INSERT INTO project_members (project_id, member_id)
+       SELECT id, $3 FROM inserted`,
+      [departmentId, goal.rows[0].id, memberId],
+    );
+    const overloadedWorkload = await client.query<{
+      active_project_count: number;
+      open_task_count: number;
+      due_this_week_task_count: number;
+      overdue_task_count: number;
+    }>(MEMBER_WORKLOAD_QUERY, [[memberId]]);
+    const overloadedMetrics = overloadedWorkload.rows[0];
+    assert(overloadedMetrics.active_project_count === 4, 'Soft cap must still allow and report four active projects.');
+    assert(
+      getCapacityStatus({
+        activeProjectCount: overloadedMetrics.active_project_count,
+        openTaskCount: overloadedMetrics.open_task_count,
+        dueThisWeekTaskCount: overloadedMetrics.due_this_week_task_count,
+        overdueTaskCount: overloadedMetrics.overdue_task_count,
+      }) === 'Overloaded',
+      'Four active projects must calculate as Overloaded.',
     );
 
     const progress = await client.query<{
@@ -229,7 +281,7 @@ async function run(): Promise<void> {
       [closureItem.rows[0].id],
     );
 
-    console.log('Database tests passed: migrations, hierarchy, progress, and closure rules.');
+    console.log('Database tests passed: migrations, hierarchy, progress, workload, capacity, and closure rules.');
   } finally {
     await client.query('ROLLBACK');
     client.release();
