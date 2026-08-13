@@ -3,14 +3,19 @@ import 'server-only';
 import type { QueryResultRow } from 'pg';
 
 import { db } from '@/lib/db';
+import { CLOSURE_ITEM_LABELS } from '@/lib/project-constants';
 import type {
   ActionStatus,
+  ClosureItemKey,
   DailyTask,
   DepartmentWorkData,
   MemberWorkData,
   PeriodProgress,
   PeriodType,
   Project,
+  ProjectClosureItem,
+  ProjectDetail,
+  ProjectStatus,
   WeekGoal,
   WorkActionOption,
 } from '@/types';
@@ -18,12 +23,21 @@ import type {
 interface ProjectRow extends QueryResultRow {
   id: string;
   department_id: string;
+  department_name: string;
   goal_id: string;
   goal_title: string;
+  client_name: string | null;
   code: string | null;
   name: string;
   description: string | null;
+  owner_member_id: string | null;
+  owner_member_name: string | null;
+  member_ids: string[];
+  member_names: string[];
+  start_date: string | Date | null;
+  end_date: string | Date | null;
   status: string;
+  budget: string | null;
   total_tasks: number;
   done_tasks: number;
   progress_percent: string;
@@ -78,10 +92,40 @@ interface WorkActionRow extends QueryResultRow {
   code: string | null;
 }
 
+interface ClosureItemRow extends QueryResultRow {
+  id: string;
+  item_key: ClosureItemKey;
+  assigned_member_id: string | null;
+  assigned_member_name: string | null;
+  is_required: boolean;
+  is_completed: boolean;
+  completed_at: string | Date | null;
+}
+
+interface ProjectActionRow extends QueryResultRow {
+  id: string;
+  code: string | null;
+  title: string;
+  progress_percent: string;
+}
+
 function mapStatus(status: string): ActionStatus {
   if (status === 'DONE') return 'Done';
   if (status === 'IN_PROGRESS') return 'In Progress';
   return 'Not Started';
+}
+
+function mapProjectStatus(status: string): ProjectStatus {
+  const statuses: Record<string, ProjectStatus> = {
+    PLANNED: 'Planned',
+    ACTIVE: 'Active',
+    INTERNAL_REVIEW: 'Internal Review',
+    CLIENT_REVIEW: 'Client Review',
+    DELIVERED: 'Delivered',
+    CLOSURE_PENDING: 'Closure Pending',
+    CLOSED: 'Closed',
+  };
+  return statuses[status] ?? 'Planned';
 }
 
 function dateString(value: string | Date): string {
@@ -97,12 +141,21 @@ function mapProject(row: ProjectRow): Project {
   return {
     id: row.id,
     departmentId: row.department_id,
+    departmentName: row.department_name,
     goalId: row.goal_id,
     goalTitle: row.goal_title,
-    code: row.code ?? undefined,
+    clientName: row.client_name ?? undefined,
+    jobCode: row.code ?? undefined,
     name: row.name,
     description: row.description ?? undefined,
-    status: mapStatus(row.status),
+    ownerId: row.owner_member_id ?? undefined,
+    ownerName: row.owner_member_name ?? undefined,
+    memberIds: row.member_ids,
+    memberNames: row.member_names,
+    startDate: row.start_date ? dateString(row.start_date) : undefined,
+    deadline: row.end_date ? dateString(row.end_date) : undefined,
+    status: mapProjectStatus(row.status),
+    budget: row.budget === null ? undefined : Number(row.budget),
     totalTasks: Number(row.total_tasks),
     doneTasks: Number(row.done_tasks),
     progress: Number(row.progress_percent),
@@ -126,43 +179,58 @@ function mapTask(row: TaskRow): DailyTask {
   };
 }
 
-async function getProjects(
+export async function getProjects(
   departmentId: string | null,
   memberId: string | null,
 ): Promise<Project[]> {
   const result = await db.query<ProjectRow>(
-    `SELECT DISTINCT
+    `SELECT
             p.id,
             p.department_id,
+            d.name AS department_name,
             p.goal_id,
             g.title AS goal_title,
+            p.client_name,
             p.code,
             p.name,
             p.description,
-            CASE
-              WHEN ptp.total_tasks IS NULL THEN p.status
-              WHEN ptp.progress_percent = 100 THEN 'DONE'
-              WHEN ptp.progress_percent > 0 THEN 'IN_PROGRESS'
-              ELSE 'NOT_STARTED'
-            END AS status,
+            p.owner_member_id,
+            owner.name AS owner_member_name,
+            ARRAY(
+              SELECT pm.member_id
+                FROM project_members pm
+                JOIN members member_record ON member_record.id = pm.member_id
+               WHERE pm.project_id = p.id
+               ORDER BY member_record.name, member_record.id
+            ) AS member_ids,
+            ARRAY(
+              SELECT member_record.name
+                FROM project_members pm
+                JOIN members member_record ON member_record.id = pm.member_id
+               WHERE pm.project_id = p.id
+               ORDER BY member_record.name, member_record.id
+            ) AS member_names,
+            p.start_date,
+            p.end_date,
+            p.status,
+            p.budget,
             COALESCE(ptp.total_tasks, 0) AS total_tasks,
             COALESCE(ptp.done_tasks, 0) AS done_tasks,
             COALESCE(ptp.progress_percent, 0) AS progress_percent
        FROM projects p
+       JOIN departments d ON d.id = p.department_id
        JOIN goals g ON g.id = p.goal_id
+       LEFT JOIN members owner ON owner.id = p.owner_member_id
        LEFT JOIN project_task_progress ptp ON ptp.project_id = p.id
       WHERE ($1::uuid IS NULL OR p.department_id = $1)
         AND (
           $2::uuid IS NULL
           OR EXISTS (
-            SELECT 1
-              FROM actions a
-              JOIN action_assignees aa ON aa.action_id = a.id
-             WHERE a.goal_id = p.goal_id
-               AND aa.member_id = $2
+            SELECT 1 FROM project_members pm
+             WHERE pm.project_id = p.id AND pm.member_id = $2
           )
         )
-      ORDER BY g.title, p.name`,
+      ORDER BY d.name, p.name`,
     [departmentId, memberId],
   );
 
@@ -378,5 +446,65 @@ export async function getMemberWorkData(memberId: string): Promise<MemberWorkDat
     weekGoals: execution.weekGoals,
     tasks: execution.tasks,
     periodProgress,
+  };
+}
+
+export async function getProjectDetail(projectId: string): Promise<ProjectDetail | null> {
+  const projects = await getProjects(null, null);
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) return null;
+
+  const [execution, closureResult, actionResult] = await Promise.all([
+    getWeekGoals(project.departmentId, null),
+    db.query<ClosureItemRow>(
+      `SELECT pci.id,
+              pci.item_key,
+              pci.assigned_member_id,
+              m.name AS assigned_member_name,
+              pci.is_required,
+              pci.is_completed,
+              pci.completed_at
+         FROM project_closure_items pci
+         LEFT JOIN members m ON m.id = pci.assigned_member_id
+        WHERE pci.project_id = $1
+        ORDER BY pci.created_at, pci.item_key`,
+      [projectId],
+    ),
+    db.query<ProjectActionRow>(
+      `SELECT DISTINCT a.id,
+              a.code,
+              a.title,
+              COALESCE(atp.progress_percent, a.progress_percent) AS progress_percent
+         FROM week_goals wg
+         JOIN actions a ON a.id = wg.action_id
+         LEFT JOIN action_task_progress atp ON atp.action_id = a.id
+        WHERE wg.project_id = $1
+        ORDER BY a.code NULLS LAST, a.title`,
+      [projectId],
+    ),
+  ]);
+
+  const closureItems: ProjectClosureItem[] = closureResult.rows.map((row) => ({
+    id: row.id,
+    key: row.item_key,
+    label: CLOSURE_ITEM_LABELS[row.item_key],
+    assignedMemberId: row.assigned_member_id ?? undefined,
+    assignedMemberName: row.assigned_member_name ?? undefined,
+    required: row.is_required,
+    completed: row.is_completed,
+    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : undefined,
+  }));
+
+  return {
+    ...project,
+    closureItems,
+    actions: actionResult.rows.map((row) => ({
+      id: row.id,
+      code: row.code ?? undefined,
+      title: row.title,
+      progress: Number(row.progress_percent),
+    })),
+    weekGoals: execution.weekGoals.filter((weekGoal) => weekGoal.projectId === projectId),
+    tasks: execution.tasks.filter((task) => task.projectId === projectId),
   };
 }

@@ -14,3 +14,7 @@ export { default as ProjectPanel } from './departments/ProjectPanel';
 export { default as GoalCard } from './goals/GoalCard';
 
 export { default as MemberWorkClient } from './members/MemberWorkClient';
+
+export { default as ProjectForm } from './projects/ProjectForm';
+export { default as ProjectsClient } from './projects/ProjectsClient';
+export { default as ProjectDetailClient } from './projects/ProjectDetailClient';

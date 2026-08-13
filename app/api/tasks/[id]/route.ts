@@ -122,6 +122,8 @@ export async function PATCH(
 
     revalidatePath(`/members/${task.assignedMemberId}`);
     revalidatePath(`/departments/${task.departmentId}`);
+    revalidatePath(`/projects/${task.projectId}`);
+    revalidatePath('/projects');
     revalidatePath('/dashboard');
 
     return Response.json({ task });
@@ -145,6 +147,7 @@ export async function DELETE(
       id: string;
       assignedMemberId: string;
       departmentId: string;
+      projectId: string;
     }>(
       `WITH deleted AS (
          DELETE FROM tasks
@@ -153,7 +156,8 @@ export async function DELETE(
        )
        SELECT d.id,
               d.assigned_member_id AS "assignedMemberId",
-              wg.department_id AS "departmentId"
+              wg.department_id AS "departmentId",
+              wg.project_id AS "projectId"
          FROM deleted d
          JOIN week_goals wg ON wg.id = d.week_goal_id`,
       [id],
@@ -164,6 +168,8 @@ export async function DELETE(
 
     revalidatePath(`/members/${task.assignedMemberId}`);
     revalidatePath(`/departments/${task.departmentId}`);
+    revalidatePath(`/projects/${task.projectId}`);
+    revalidatePath('/projects');
     revalidatePath('/dashboard');
 
     return Response.json({ deletedTaskId: task.id });

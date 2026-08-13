@@ -3,6 +3,18 @@ export type ActionStatus =
   | 'In Progress'
   | 'Done';
 
+export const PROJECT_STATUSES = [
+  'Planned',
+  'Active',
+  'Internal Review',
+  'Client Review',
+  'Delivered',
+  'Closure Pending',
+  'Closed',
+] as const;
+
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
 export type Priority =
   | 'Low'
   | 'Medium'
@@ -37,15 +49,55 @@ export interface PeriodProgress {
 export interface Project {
   id: string;
   departmentId: string;
+  departmentName: string;
   goalId: string;
   goalTitle: string;
-  code?: string;
+  clientName?: string;
+  jobCode?: string;
   name: string;
   description?: string;
-  status: ActionStatus;
+  ownerId?: string;
+  ownerName?: string;
+  memberIds: string[];
+  memberNames: string[];
+  startDate?: string;
+  deadline?: string;
+  status: ProjectStatus;
+  budget?: number;
   totalTasks: number;
   doneTasks: number;
   progress: number;
+}
+
+export type ClosureItemKey =
+  | 'FINAL_FORMATS_CHECKED'
+  | 'DRIVE_CLOSURE_COMPLETED'
+  | 'PORTFOLIO_GIF_CREATED'
+  | 'PROJECT_PPT_COMPLETED'
+  | 'PORTFOLIO_UPDATE_COMPLETED'
+  | 'INVOICE_ACCOUNTS_NOTIFIED';
+
+export interface ProjectClosureItem {
+  id: string;
+  key: ClosureItemKey;
+  label: string;
+  assignedMemberId?: string;
+  assignedMemberName?: string;
+  required: boolean;
+  completed: boolean;
+  completedAt?: string;
+}
+
+export interface ProjectDetail extends Project {
+  closureItems: ProjectClosureItem[];
+  actions: {
+    id: string;
+    code?: string;
+    title: string;
+    progress: number;
+  }[];
+  weekGoals: WeekGoal[];
+  tasks: DailyTask[];
 }
 
 export interface DailyTask {

@@ -12,6 +12,10 @@ function getPageTitle(pathname: string) {
     return 'Members';
   }
 
+  if (pathname.startsWith('/projects')) {
+    return 'Projects';
+  }
+
   if (pathname.startsWith('/settings')) {
     return 'Settings';
   }

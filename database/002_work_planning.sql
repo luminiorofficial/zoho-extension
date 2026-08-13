@@ -8,14 +8,20 @@
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'uq_goals_id_department'
+        SELECT 1
+          FROM pg_constraint
+         WHERE conname = 'uq_goals_id_department'
+           AND conrelid = 'goals'::regclass
     ) THEN
         ALTER TABLE goals
             ADD CONSTRAINT uq_goals_id_department UNIQUE (id, department_id);
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'uq_actions_id_goal'
+        SELECT 1
+          FROM pg_constraint
+         WHERE conname = 'uq_actions_id_goal'
+           AND conrelid = 'actions'::regclass
     ) THEN
         ALTER TABLE actions
             ADD CONSTRAINT uq_actions_id_goal UNIQUE (id, goal_id);

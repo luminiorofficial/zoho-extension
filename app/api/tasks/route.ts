@@ -99,6 +99,8 @@ export async function POST(request: Request) {
     const task = taskResult.rows[0];
     revalidatePath(`/members/${payload.memberId}`);
     revalidatePath(`/departments/${task.departmentId}`);
+    revalidatePath(`/projects/${task.projectId}`);
+    revalidatePath('/projects');
     revalidatePath('/dashboard');
 
     return Response.json({ task }, { status: 201 });

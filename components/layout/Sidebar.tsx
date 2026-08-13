@@ -8,6 +8,7 @@ import {
   Users,
   Settings,
   Target,
+  FolderKanban,
 } from 'lucide-react';
 
 const navigation = [
@@ -25,6 +26,11 @@ const navigation = [
     name: 'Members',
     href: '/members',
     icon: Users,
+  },
+  {
+    name: 'Projects',
+    href: '/projects',
+    icon: FolderKanban,
   },
   {
     name: 'Settings',

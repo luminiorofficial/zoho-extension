@@ -70,6 +70,9 @@ export async function POST(request: Request) {
          JOIN department_members dm
            ON dm.department_id = p.department_id
           AND dm.member_id = $3
+         JOIN project_members pm
+           ON pm.project_id = p.id
+          AND pm.member_id = $3
         WHERE a.id = $1`,
       [payload.actionId, payload.projectId, payload.memberId],
     );
@@ -122,6 +125,8 @@ export async function POST(request: Request) {
 
     revalidatePath(`/members/${payload.memberId}`);
     revalidatePath(`/departments/${hierarchy.department_id}`);
+    revalidatePath(`/projects/${payload.projectId}`);
+    revalidatePath('/projects');
 
     return Response.json({ weekGoal: { id: weekGoalResult.rows[0].id } }, { status: 201 });
   } catch (error) {
