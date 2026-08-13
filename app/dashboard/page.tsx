@@ -9,11 +9,12 @@ import {
   DepartmentCard,
   Layout,
 } from '@/components';
+import { getStructureData } from '@/lib/structure-data';
 
-import { mockData } from '@/data/mockData';
+export const dynamic = 'force-dynamic';
 
-export default function DashboardPage() {
-  const departments = mockData.departments;
+export default async function DashboardPage() {
+  const { departments, members } = await getStructureData();
 
   const totalGoals = departments.reduce(
     (total, department) =>
@@ -32,7 +33,7 @@ export default function DashboardPage() {
     0
   );
 
-  const totalMembers = mockData.members.length;
+  const totalMembers = members.length;
 
   const overallProgress =
     departments.length > 0

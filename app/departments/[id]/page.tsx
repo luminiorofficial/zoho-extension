@@ -5,8 +5,9 @@ import {
   Layout,
   ProgressBar,
 } from '@/components';
+import { getStructureData } from '@/lib/structure-data';
 
-import { mockData } from '@/data/mockData';
+export const dynamic = 'force-dynamic';
 
 interface DepartmentPageProps {
   params: Promise<{
@@ -18,20 +19,16 @@ export default async function DepartmentPage({
   params,
 }: DepartmentPageProps) {
   const { id } = await params;
+  const { departments, members } = await getStructureData();
 
   const department =
-    mockData.departments.find(
+    departments.find(
       (item) => item.id === id
     );
 
   if (!department) {
     notFound();
   }
-
-  const departmentMembers =
-    mockData.members.filter((member) =>
-      department.memberIds.includes(member.id)
-    );
 
   return (
     <Layout>
@@ -101,7 +98,7 @@ export default async function DepartmentPage({
             <GoalCard
               key={goal.id}
               goal={goal}
-              members={departmentMembers}
+              members={members}
             />
           ))}
 

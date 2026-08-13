@@ -1,7 +1,14 @@
 import { Layout } from '@/components';
-import { mockData } from '@/data/mockData';
+import { getStructureData } from '@/lib/structure-data';
 
-export default function MembersPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function MembersPage() {
+  const { departments, members } = await getStructureData();
+  const departmentNames = new Map(
+    departments.map((department) => [department.id, department.name])
+  );
+
   return (
     <Layout>
 
@@ -41,12 +48,12 @@ export default function MembersPage() {
 
           <tbody className="divide-y divide-slate-100">
 
-            {mockData.members.map((member) => {
-              const department =
-                mockData.departments.find(
-                  (item) =>
-                    item.id === member.departmentId
-                );
+            {members.map((member) => {
+              const assignedDepartments = (
+                member.departmentIds ?? [member.departmentId]
+              )
+                .map((departmentId) => departmentNames.get(departmentId))
+                .filter((name): name is string => Boolean(name));
 
               return (
                 <tr key={member.id}>
@@ -64,7 +71,9 @@ export default function MembersPage() {
                   </td>
 
                   <td className="px-5 py-4 text-sm text-slate-600">
-                    {department?.name ?? 'Unassigned'}
+                    {assignedDepartments.length
+                      ? assignedDepartments.join(', ')
+                      : 'Unassigned'}
                   </td>
 
                 </tr>

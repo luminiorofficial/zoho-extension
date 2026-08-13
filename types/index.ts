@@ -14,14 +14,26 @@ export interface Member {
   email: string;
   role: string;
   departmentId: string;
+  departmentIds?: string[];
   specialization?: string;
   avatar?: string;
+}
+
+export interface Target {
+  id: string;
+  goalId: string;
+  title: string;
+  targetText?: string;
+  targetValue?: number;
+  targetUnit?: string;
+  periodType?: string;
 }
 
 export interface Action {
   id: string;
   goalId: string;
 
+  code?: string;
   title: string;
   description?: string;
 
@@ -47,6 +59,7 @@ export interface Goal {
 
   progress: number;
 
+  targets?: Target[];
   actions: Action[];
 }
 

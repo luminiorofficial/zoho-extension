@@ -2,14 +2,17 @@ import {
   DepartmentsClient,
   Layout,
 } from '@/components';
+import { getStructureData } from '@/lib/structure-data';
 
-import { mockData } from '@/data/mockData';
+export const dynamic = 'force-dynamic';
 
-export default function DepartmentsPage() {
+export default async function DepartmentsPage() {
+  const { departments } = await getStructureData();
+
   return (
     <Layout>
       <DepartmentsClient
-        initialDepartments={mockData.departments}
+        initialDepartments={departments}
       />
     </Layout>
   );
