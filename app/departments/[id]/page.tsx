@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 
 import {
   DepartmentExecution,
+  DepartmentAttendanceView,
   GoalCard,
   Layout,
   PeriodProgressCards,
@@ -10,6 +11,7 @@ import {
 } from '@/components';
 import { getStructureData } from '@/lib/structure-data';
 import { getDepartmentWorkData } from '@/lib/work-data';
+import { getDepartmentAttendanceToday } from '@/lib/attendance-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +25,10 @@ export default async function DepartmentPage({
   params,
 }: DepartmentPageProps) {
   const { id } = await params;
-  const [{ departments, members }, work] = await Promise.all([
+  const [{ departments, members }, work, attendance] = await Promise.all([
     getStructureData(),
     getDepartmentWorkData(id),
+    getDepartmentAttendanceToday(id),
   ]);
 
   const department =
@@ -91,6 +94,10 @@ export default async function DepartmentPage({
           </div>
         </div>
 
+      </div>
+
+      <div className="mt-8">
+        <DepartmentAttendanceView members={attendance} />
       </div>
 
       <div className="mt-8">

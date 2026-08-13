@@ -10,6 +10,7 @@ import {
   Target,
   FolderKanban,
   Gauge,
+  CalendarCheck2,
 } from 'lucide-react';
 
 const navigation = [
@@ -37,6 +38,11 @@ const navigation = [
     name: 'Workload',
     href: '/workload',
     icon: Gauge,
+  },
+  {
+    name: 'Attendance',
+    href: '/attendance',
+    icon: CalendarCheck2,
   },
   {
     name: 'Settings',

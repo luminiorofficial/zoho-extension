@@ -24,6 +24,18 @@ export const CAPACITY_STATUSES = [
 
 export type CapacityStatus = (typeof CAPACITY_STATUSES)[number];
 
+export const ATTENDANCE_STATUSES = [
+  'Present',
+  'Half Day',
+  'Approved Leave',
+  'Absent',
+  'Work on Holiday',
+] as const;
+
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
+
+export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+
 export type Priority =
   | 'Low'
   | 'Medium'
@@ -99,7 +111,56 @@ export interface MemberWorkload {
   completedThisWeekTaskCount: number;
   overdueTaskCount: number;
   capacityStatus: CapacityStatus;
+  availabilityStatus: AttendanceStatus;
   activeProjects: ProjectAllocation[];
+}
+
+export interface AttendanceRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  departmentIds: string[];
+  departmentNames: string[];
+  date: string;
+  status: AttendanceStatus;
+  note?: string;
+  source: 'Manual' | 'Leave request' | 'Imported';
+  isReadOnly: boolean;
+}
+
+export interface AttendanceSummary {
+  todayStatus: AttendanceStatus;
+  counts: Record<AttendanceStatus, number>;
+  history: AttendanceRecord[];
+}
+
+export interface DepartmentAttendanceMember {
+  memberId: string;
+  memberName: string;
+  role: string;
+  status: AttendanceStatus;
+}
+
+export interface LeaveRequest {
+  id: string;
+  departmentId: string;
+  departmentName: string;
+  memberId: string;
+  memberName: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  status: LeaveRequestStatus;
+  reviewerName?: string;
+  reviewNote?: string;
+  createdAt: string;
+}
+
+export interface AttendanceReviewer {
+  memberId: string;
+  memberName: string;
+  departmentIds: string[];
+  isAdmin: boolean;
 }
 
 export type ClosureItemKey =

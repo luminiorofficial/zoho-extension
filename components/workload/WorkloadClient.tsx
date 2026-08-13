@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { BriefcaseBusiness, CalendarClock, CheckCircle2, CircleGauge } from 'lucide-react';
 
 import CapacityBadge from '@/components/workload/CapacityBadge';
+import AttendanceStatusBadge from '@/components/attendance/AttendanceStatusBadge';
 import { CAPACITY_STATUSES, type CapacityStatus, type MemberWorkload } from '@/types';
 
 interface WorkloadClientProps {
@@ -44,7 +45,7 @@ export default function WorkloadClient({ workloads, departments }: WorkloadClien
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-slate-900">Artist Allocation &amp; Workload</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Live capacity derived from project allocation, open tasks, task dates, and status.
+          Live capacity and today&apos;s availability for safer project assignment.
         </p>
       </div>
 
@@ -89,6 +90,7 @@ export default function WorkloadClient({ workloads, departments }: WorkloadClien
                   <div className="flex flex-wrap items-center gap-2">
                     <Link href={`/members/${workload.memberId}`} className="font-semibold text-slate-900 hover:text-blue-700">{workload.memberName}</Link>
                     <CapacityBadge status={workload.capacityStatus} />
+                    <AttendanceStatusBadge status={workload.availabilityStatus} />
                     {deliveryMember && <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">Operations / Artist allocation</span>}
                   </div>
                   <p className="mt-1 text-sm text-slate-500">{workload.role} · {workload.departmentNames.join(', ') || 'Unassigned'}</p>
@@ -96,6 +98,11 @@ export default function WorkloadClient({ workloads, departments }: WorkloadClien
                 {workload.overdueTaskCount > 0 && (
                   <span className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                     {workload.overdueTaskCount} overdue open task{workload.overdueTaskCount === 1 ? '' : 's'}
+                  </span>
+                )}
+                {['Absent', 'Approved Leave'].includes(workload.availabilityStatus) && (
+                  <span className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    Unavailable today — avoid new assignments
                   </span>
                 )}
               </div>

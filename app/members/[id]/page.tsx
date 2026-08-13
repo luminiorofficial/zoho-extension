@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 
-import { Layout, MemberWorkClient } from '@/components';
+import { Layout, MemberAttendancePanel, MemberWorkClient } from '@/components';
+import { getLeaveRequests, getMemberAttendanceSummary } from '@/lib/attendance-data';
 import { getStructureData } from '@/lib/structure-data';
 import { getMemberWorkData } from '@/lib/work-data';
 
@@ -12,9 +13,11 @@ interface MemberPageProps {
 
 export default async function MemberPage({ params }: MemberPageProps) {
   const { id } = await params;
-  const [{ departments, members }, work] = await Promise.all([
+  const [{ departments, members }, work, attendance, leaveRequests] = await Promise.all([
     getStructureData(),
     getMemberWorkData(id),
+    getMemberAttendanceSummary(id),
+    getLeaveRequests({ memberId: id }),
   ]);
   const member = members.find((item) => item.id === id);
 
@@ -23,6 +26,10 @@ export default async function MemberPage({ params }: MemberPageProps) {
   const departmentNames = (member.departmentIds ?? [member.departmentId])
     .map((departmentId) => departments.find((department) => department.id === departmentId)?.name)
     .filter((name): name is string => Boolean(name));
+  const memberDepartments = (member.departmentIds ?? [member.departmentId])
+    .map((departmentId) => departments.find((department) => department.id === departmentId))
+    .filter((department): department is NonNullable<typeof department> => Boolean(department))
+    .map((department) => ({ id: department.id, name: department.name }));
 
   return (
     <Layout>
@@ -33,6 +40,13 @@ export default async function MemberPage({ params }: MemberPageProps) {
           {member.role} · {departmentNames.join(', ') || 'Unassigned'}
         </p>
       </div>
+
+      <MemberAttendancePanel
+        member={member}
+        departments={memberDepartments}
+        summary={attendance}
+        leaveRequests={leaveRequests}
+      />
 
       <MemberWorkClient member={member} initialWork={work} />
     </Layout>

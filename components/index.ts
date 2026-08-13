@@ -6,6 +6,11 @@ export { default as ProgressBar } from './common/ProgressBar';
 export { default as PeriodProgressCards } from './common/PeriodProgressCards';
 export { default as StatusBadge } from './common/StatusBadge';
 
+export { default as AttendanceClient } from './attendance/AttendanceClient';
+export { default as AttendanceStatusBadge } from './attendance/AttendanceStatusBadge';
+export { default as DepartmentAttendanceView } from './attendance/DepartmentAttendanceView';
+export { default as MemberAttendancePanel } from './attendance/MemberAttendancePanel';
+
 export { default as DepartmentCard } from './departments/DepartmentCard';
 export { default as DepartmentExecution } from './departments/DepartmentExecution';
 export { default as DepartmentsClient } from './departments/DepartmentsClient';

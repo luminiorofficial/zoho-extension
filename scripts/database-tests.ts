@@ -63,6 +63,7 @@ async function run(): Promise<void> {
       '002_work_planning.sql',
       '003_financial_year_progress.sql',
       '004_project_management_closure.sql',
+      '005_attendance_leave.sql',
     ]) {
       await client.query(fs.readFileSync(path.join(process.cwd(), 'database', migration), 'utf8'));
     }
@@ -84,6 +85,75 @@ async function run(): Promise<void> {
        VALUES ($1, $2), ($1, $3)`,
       [departmentId, ownerId, memberId],
     );
+    await client.query(
+      `UPDATE department_members SET is_department_head = TRUE
+        WHERE department_id = $1 AND member_id = $2`,
+      [departmentId, ownerId],
+    );
+
+    await client.query(
+      `INSERT INTO daily_updates (
+         department_id, member_id, update_date, activity, status, entry_type,
+         source_sheet, source_row, source_cell
+       ) VALUES
+         ($1, $2, '2026-07-01', 'Approved leave', 'LEAVE', 'LEAVE', 'Import', 10, 'A10'),
+         ($1, $2, '2026-07-01', 'Duplicate tracking row', 'LEAVE', 'LEAVE', 'Import', 10, 'B10'),
+         ($1, $2, '2026-07-02', 'Work on Holiday', NULL, 'HOLIDAY', 'Import', 10, 'C10')`,
+      [departmentId, memberId],
+    );
+    const importedAttendance = await client.query<{
+      attendance_date: string;
+      status: string;
+      is_read_only: boolean;
+    }>(
+      `SELECT attendance_date::text, status, is_read_only
+         FROM attendance_history
+        WHERE member_id = $1
+        ORDER BY attendance_date`,
+      [memberId],
+    );
+    assert(importedAttendance.rows.length === 2, 'Imported daily tracking must collapse to one attendance row per date.');
+    assert(importedAttendance.rows[0].status === 'APPROVED_LEAVE', 'Imported leave must map to approved leave history.');
+    assert(importedAttendance.rows[0].is_read_only, 'Imported attendance history must be read-only.');
+    assert(importedAttendance.rows[1].status === 'WORK_ON_HOLIDAY', 'Imported holiday work must retain its attendance status.');
+
+    await client.query(
+      `INSERT INTO attendance_records (member_id, attendance_date, status, source)
+       VALUES ($1, '2026-08-10', 'PRESENT', 'MANUAL')
+       ON CONFLICT (member_id, attendance_date) DO UPDATE SET status = EXCLUDED.status`,
+      [memberId],
+    );
+    const leaveRequest = await client.query<{ id: string }>(
+      `INSERT INTO leave_requests (
+         department_id, member_id, start_date, end_date, reason
+       ) VALUES ($1, $2, '2026-08-10', '2026-08-12', 'Database test leave')
+       RETURNING id`,
+      [departmentId, memberId],
+    );
+    await client.query(
+      `UPDATE leave_requests
+          SET status = 'APPROVED', reviewed_by_member_id = $2, reviewed_at = NOW()
+        WHERE id = $1`,
+      [leaveRequest.rows[0].id, ownerId],
+    );
+    const approvedAttendance = await client.query<{
+      count: number;
+      leave_days: number;
+      source_days: number;
+    }>(
+      `SELECT COUNT(*)::integer AS count,
+              COUNT(*) FILTER (WHERE status = 'APPROVED_LEAVE')::integer AS leave_days,
+              COUNT(*) FILTER (
+                WHERE source = 'LEAVE_REQUEST' AND leave_request_id = $2
+              )::integer AS source_days
+         FROM attendance_records
+        WHERE member_id = $1
+          AND attendance_date BETWEEN '2026-08-10' AND '2026-08-12'`,
+      [memberId, leaveRequest.rows[0].id],
+    );
+    assert(approvedAttendance.rows[0].count === 3, 'Approved leave must create one attendance row per requested date.');
+    assert(approvedAttendance.rows[0].leave_days === 3, 'Approved leave must set the full range to approved leave.');
+    assert(approvedAttendance.rows[0].source_days === 3, 'Approved attendance must retain its leave request source.');
     const goal = await client.query<{ id: string }>(
       `INSERT INTO goals (department_id, title) VALUES ($1, 'Project Test Goal') RETURNING id`,
       [departmentId],
@@ -281,7 +351,7 @@ async function run(): Promise<void> {
       [closureItem.rows[0].id],
     );
 
-    console.log('Database tests passed: migrations, hierarchy, progress, workload, capacity, and closure rules.');
+    console.log('Database tests passed: migrations, attendance history, leave sync, hierarchy, progress, workload, capacity, and closure rules.');
   } finally {
     await client.query('ROLLBACK');
     client.release();

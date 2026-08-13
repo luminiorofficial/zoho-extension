@@ -3,6 +3,7 @@ import 'server-only';
 import type { QueryResultRow } from 'pg';
 
 import { getCapacityStatus } from '@/lib/capacity';
+import { attendanceStatusLabel } from '@/lib/attendance-utils';
 import { db } from '@/lib/db';
 import { MEMBER_WORKLOAD_QUERY } from '@/lib/workload-query';
 import type { MemberWorkload, ProjectAllocation, ProjectStatus } from '@/types';
@@ -19,6 +20,7 @@ interface WorkloadRow extends QueryResultRow {
   due_this_week_task_count: number;
   completed_this_week_task_count: number;
   overdue_task_count: number;
+  availability_status: string;
   active_projects: {
     id: string;
     name: string;
@@ -66,6 +68,7 @@ export async function getMemberWorkloads(memberIds?: string[]): Promise<MemberWo
       ...metrics,
       completedThisWeekTaskCount: Number(row.completed_this_week_task_count),
       capacityStatus: getCapacityStatus(metrics),
+      availabilityStatus: attendanceStatusLabel(row.availability_status),
       activeProjects: row.active_projects.map(mapAllocation),
     };
   });

@@ -59,10 +59,14 @@ export const MEMBER_WORKLOAD_QUERY = `
          COALESCE(tm.due_this_week_task_count, 0)::integer AS due_this_week_task_count,
          COALESCE(tm.completed_this_week_task_count, 0)::integer AS completed_this_week_task_count,
          COALESCE(tm.overdue_task_count, 0)::integer AS overdue_task_count,
+         COALESCE(today_attendance.status, 'ABSENT') AS availability_status,
          COALESCE(ap.active_projects, '[]'::jsonb) AS active_projects
     FROM members m
     LEFT JOIN active_projects ap ON ap.member_id = m.id
     LEFT JOIN task_metrics tm ON tm.member_id = m.id
+    LEFT JOIN attendance_history today_attendance
+      ON today_attendance.member_id = m.id
+     AND today_attendance.attendance_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
    WHERE ($1::uuid[] IS NULL OR m.id = ANY($1::uuid[]))
    ORDER BY m.name, m.id
 `;
