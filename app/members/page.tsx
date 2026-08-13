@@ -1,3 +1,6 @@
+import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
+
 import { Layout } from '@/components';
 import { getStructureData } from '@/lib/structure-data';
 
@@ -43,6 +46,10 @@ export default async function MembersPage() {
               <th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">
                 Department
               </th>
+
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase text-slate-500">
+                Work Plan
+              </th>
             </tr>
           </thead>
 
@@ -59,7 +66,9 @@ export default async function MembersPage() {
                 <tr key={member.id}>
 
                   <td className="px-5 py-4 font-medium text-slate-900">
-                    {member.name}
+                    <Link href={`/members/${member.id}`} className="hover:text-blue-700">
+                      {member.name}
+                    </Link>
                   </td>
 
                   <td className="px-5 py-4 text-sm text-slate-500">
@@ -74,6 +83,15 @@ export default async function MembersPage() {
                     {assignedDepartments.length
                       ? assignedDepartments.join(', ')
                       : 'Unassigned'}
+                  </td>
+
+                  <td className="px-5 py-4 text-right">
+                    <Link
+                      href={`/members/${member.id}`}
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                    >
+                      View tasks <ArrowRight size={14} />
+                    </Link>
                   </td>
 
                 </tr>

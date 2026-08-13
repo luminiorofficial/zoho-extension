@@ -1,11 +1,15 @@
 import { notFound } from 'next/navigation';
 
 import {
+  DepartmentExecution,
   GoalCard,
   Layout,
+  PeriodProgressCards,
   ProgressBar,
+  ProjectPanel,
 } from '@/components';
 import { getStructureData } from '@/lib/structure-data';
+import { getDepartmentWorkData } from '@/lib/work-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +23,10 @@ export default async function DepartmentPage({
   params,
 }: DepartmentPageProps) {
   const { id } = await params;
-  const { departments, members } = await getStructureData();
+  const [{ departments, members }, work] = await Promise.all([
+    getStructureData(),
+    getDepartmentWorkData(id),
+  ]);
 
   const department =
     departments.find(
@@ -87,6 +94,28 @@ export default async function DepartmentPage({
       </div>
 
       <div className="mt-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Current Progress
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Daily tasks roll up automatically into weekly, monthly, quarterly, and yearly progress.
+          </p>
+        </div>
+
+        <PeriodProgressCards progress={work.periodProgress} />
+      </div>
+
+      <div className="mt-8">
+        <ProjectPanel
+          departmentId={department.id}
+          goals={department.goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+          initialProjects={work.projects}
+        />
+      </div>
+
+      <div className="mt-8">
 
         <h2 className="mb-5 text-lg font-semibold text-slate-900">
           Department Goals
@@ -104,6 +133,14 @@ export default async function DepartmentPage({
 
         </div>
 
+      </div>
+
+      <div className="mt-8">
+        <DepartmentExecution
+          department={department}
+          members={members}
+          weekGoals={work.weekGoals}
+        />
       </div>
 
     </Layout>

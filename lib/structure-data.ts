@@ -128,9 +128,20 @@ export async function getStructureData(): Promise<StructureData> {
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, title`,
     ),
     db.query<ActionRow>(
-      `SELECT id, goal_id, code, title, description, status,
-              progress_percent, priority, due_date
-         FROM actions
+      `SELECT id, goal_id, code, title, description, effective_status AS status,
+              effective_progress AS progress_percent, priority, due_date
+         FROM (
+           SELECT a.*,
+                  COALESCE(atp.progress_percent, a.progress_percent) AS effective_progress,
+                  CASE
+                    WHEN atp.total_tasks IS NULL THEN a.status
+                    WHEN atp.progress_percent = 100 THEN 'DONE'
+                    WHEN atp.progress_percent > 0 THEN 'IN_PROGRESS'
+                    ELSE 'NOT_STARTED'
+                  END AS effective_status
+             FROM actions a
+             LEFT JOIN action_task_progress atp ON atp.action_id = a.id
+         ) actions
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, code NULLS LAST, title`,
     ),
     db.query<ActionAssigneeRow>(

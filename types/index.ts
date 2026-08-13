@@ -19,6 +19,87 @@ export interface Member {
   avatar?: string;
 }
 
+export type PeriodType =
+  | 'WEEKLY'
+  | 'MONTHLY'
+  | 'QUARTERLY'
+  | 'YEARLY';
+
+export interface PeriodProgress {
+  periodType: PeriodType;
+  periodStart: string;
+  periodEnd: string;
+  totalTasks: number;
+  doneTasks: number;
+  progress: number;
+}
+
+export interface Project {
+  id: string;
+  departmentId: string;
+  goalId: string;
+  goalTitle: string;
+  code?: string;
+  name: string;
+  description?: string;
+  status: ActionStatus;
+  totalTasks: number;
+  doneTasks: number;
+  progress: number;
+}
+
+export interface DailyTask {
+  id: string;
+  weekGoalId: string;
+  weekGoalTitle: string;
+  actionId: string;
+  actionTitle: string;
+  projectId: string;
+  projectName: string;
+  assignedMemberId: string;
+  taskDate: string;
+  title: string;
+  description?: string;
+  status: ActionStatus;
+}
+
+export interface WeekGoal {
+  id: string;
+  title: string;
+  description?: string;
+  weekStart: string;
+  weekEnd: string;
+  actionId: string;
+  actionTitle: string;
+  projectId: string;
+  projectName: string;
+  assignedMemberId: string;
+  assignedMemberName: string;
+  totalTasks: number;
+  doneTasks: number;
+  progress: number;
+  tasks: DailyTask[];
+}
+
+export interface WorkActionOption {
+  id: string;
+  goalId: string;
+  goalTitle: string;
+  title: string;
+  code?: string;
+}
+
+export interface DepartmentWorkData {
+  projects: Project[];
+  weekGoals: WeekGoal[];
+  periodProgress: PeriodProgress[];
+}
+
+export interface MemberWorkData extends DepartmentWorkData {
+  actions: WorkActionOption[];
+  tasks: DailyTask[];
+}
+
 export interface Target {
   id: string;
   goalId: string;

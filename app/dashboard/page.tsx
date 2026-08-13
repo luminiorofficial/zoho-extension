@@ -58,7 +58,7 @@ export default async function DashboardPage() {
       icon: Target,
     },
     {
-      name: 'Tasks',
+      name: 'Actions',
       value: totalActions,
       icon: CheckSquare,
     },
