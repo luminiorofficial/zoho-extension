@@ -1,12 +1,12 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { CalendarDays, Check, ClipboardList, Pencil, Plus, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import PeriodProgressCards from '@/components/common/PeriodProgressCards';
-import ProgressBar from '@/components/common/ProgressBar';
 import StatusBadge from '@/components/common/StatusBadge';
+import WeeklyPlanner from '@/components/members/WeeklyPlanner';
 import type {
   ActionStatus,
   DailyTask,
@@ -37,23 +37,11 @@ function databaseStatus(status: ActionStatus): string {
   return 'NOT_STARTED';
 }
 
-function weekLabel(start: string, end: string): string {
-  const formatter = new Intl.DateTimeFormat('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-  return `${formatter.format(new Date(`${start}T00:00:00Z`))} – ${formatter.format(new Date(`${end}T00:00:00Z`))}`;
-}
-
 export default function MemberWorkClient({ member, initialWork }: MemberWorkClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialWork.tasks);
   const [showForm, setShowForm] = useState(false);
-  const [projectId, setProjectId] = useState(initialWork.projects[0]?.id ?? '');
-  const [actionId, setActionId] = useState('');
-  const [weekGoalTitle, setWeekGoalTitle] = useState('');
+  const [weekGoalId, setWeekGoalId] = useState(initialWork.weekGoals[0]?.id ?? '');
   const [taskTitle, setTaskTitle] = useState('');
   const [description, setDescription] = useState('');
   const [taskDate, setTaskDate] = useState(today());
@@ -63,14 +51,12 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
-  const selectedProject = initialWork.projects.find((project) => project.id === projectId);
-  const compatibleActions = useMemo(
-    () => initialWork.actions.filter((action) => action.goalId === selectedProject?.goalId),
-    [initialWork.actions, selectedProject?.goalId],
-  );
-  const selectedActionId = compatibleActions.some((action) => action.id === actionId)
-    ? actionId
-    : (compatibleActions[0]?.id ?? '');
+  const selectedWeekGoal = initialWork.weekGoals.find((weekGoal) => weekGoal.id === weekGoalId)
+    ?? initialWork.weekGoals[0];
+  const selectedTaskDate = selectedWeekGoal
+    && (taskDate < selectedWeekGoal.weekStart || taskDate > selectedWeekGoal.weekEnd)
+    ? selectedWeekGoal.weekStart
+    : taskDate;
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,12 +69,10 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           memberId: member.id,
-          projectId,
-          actionId: selectedActionId,
-          weekGoalTitle,
+          weekGoalId: selectedWeekGoal?.id,
           title: taskTitle,
           description,
-          taskDate,
+          taskDate: selectedTaskDate,
         }),
       });
       const body = await response.json() as { task?: DailyTask; error?: string };
@@ -149,6 +133,13 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
         <PeriodProgressCards progress={initialWork.periodProgress} />
       </section>
 
+      <WeeklyPlanner
+        memberId={member.id}
+        projects={initialWork.projects}
+        actions={initialWork.actions}
+        weekGoals={initialWork.weekGoals}
+      />
+
       <section className="mb-8">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
@@ -161,7 +152,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           <button
             type="button"
             onClick={() => setShowForm((current) => !current)}
-            disabled={!initialWork.projects.length}
+            disabled={!initialWork.weekGoals.length}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {showForm ? <X size={17} /> : <Plus size={17} />}
@@ -169,59 +160,35 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           </button>
         </div>
 
-        {!initialWork.projects.length && (
+        {!initialWork.weekGoals.length && (
           <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            A department project must be created for one of this member’s goals before daily tasks can be added.
+            Create a weekly goal in the planner before adding daily tasks.
           </div>
         )}
 
         {showForm && (
           <form onSubmit={handleCreate} className="mb-6 rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700">
-                Project
+              <label className="text-sm font-medium text-slate-700 md:col-span-2">
+                Weekly goal
                 <select
                   required
-                  value={projectId}
+                  value={selectedWeekGoal?.id ?? ''}
                   onChange={(event) => {
-                    setProjectId(event.target.value);
-                    setActionId('');
+                    const nextGoal = initialWork.weekGoals.find(
+                      (weekGoal) => weekGoal.id === event.target.value,
+                    );
+                    setWeekGoalId(event.target.value);
+                    if (nextGoal) setTaskDate(nextGoal.weekStart);
                   }}
                   className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
                 >
-                  {initialWork.projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name} · {project.goalTitle}
+                  {initialWork.weekGoals.map((weekGoal) => (
+                    <option key={weekGoal.id} value={weekGoal.id}>
+                      {weekGoal.title} · {weekGoal.projectName} · {weekGoal.weekStart}
                     </option>
                   ))}
                 </select>
-              </label>
-
-              <label className="text-sm font-medium text-slate-700">
-                Action
-                <select
-                  required
-                  value={selectedActionId}
-                  onChange={(event) => setActionId(event.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
-                >
-                  {compatibleActions.map((action) => (
-                    <option key={action.id} value={action.id}>
-                      {action.code ? `${action.code} · ` : ''}{action.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-sm font-medium text-slate-700">
-                Week goal
-                <input
-                  required
-                  value={weekGoalTitle}
-                  onChange={(event) => setWeekGoalTitle(event.target.value)}
-                  placeholder="What should be achieved this week?"
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
-                />
               </label>
 
               <label className="text-sm font-medium text-slate-700">
@@ -229,7 +196,9 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
                 <input
                   required
                   type="date"
-                  value={taskDate}
+                  min={selectedWeekGoal?.weekStart}
+                  max={selectedWeekGoal?.weekEnd}
+                  value={selectedTaskDate}
                   onChange={(event) => setTaskDate(event.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
                 />
@@ -261,7 +230,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
 
             <button
               type="submit"
-              disabled={pending || !selectedActionId}
+              disabled={pending || !selectedWeekGoal}
               className="mt-5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {pending ? 'Saving…' : 'Create Daily Task'}
@@ -364,35 +333,6 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
         </div>
       </section>
 
-      <section>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Weekly Goals</h2>
-          <p className="mt-1 text-sm text-slate-500">Task-weighted progress for each weekly commitment.</p>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          {initialWork.weekGoals.map((weekGoal) => (
-            <div key={weekGoal.id} className="rounded-xl border border-slate-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
-                {weekLabel(weekGoal.weekStart, weekGoal.weekEnd)}
-              </p>
-              <h3 className="mt-2 font-semibold text-slate-900">{weekGoal.title}</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                {weekGoal.actionTitle} · {weekGoal.projectName}
-              </p>
-              <div className="mt-4 flex justify-between text-xs text-slate-500">
-                <span>{weekGoal.doneTasks}/{weekGoal.totalTasks} tasks done</span>
-                <span className="font-semibold text-slate-700">{Math.round(weekGoal.progress)}%</span>
-              </div>
-              <ProgressBar value={weekGoal.progress} size="sm" className="mt-2" />
-            </div>
-          ))}
-
-          {!initialWork.weekGoals.length && (
-            <p className="text-sm text-slate-500">Weekly goals appear automatically with the first daily task.</p>
-          )}
-        </div>
-      </section>
     </>
   );
 }

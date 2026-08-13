@@ -275,13 +275,17 @@ async function getCurrentProgress(
          ),
          (
            'QUARTERLY'::varchar(30),
-           DATE_TRUNC('quarter', CURRENT_DATE)::date,
-           (DATE_TRUNC('quarter', CURRENT_DATE) + INTERVAL '3 months - 1 day')::date
+           (DATE_TRUNC('quarter', CURRENT_DATE - INTERVAL '3 months')
+             + INTERVAL '3 months')::date,
+           (DATE_TRUNC('quarter', CURRENT_DATE - INTERVAL '3 months')
+             + INTERVAL '6 months - 1 day')::date
          ),
          (
            'YEARLY'::varchar(30),
-           DATE_TRUNC('year', CURRENT_DATE)::date,
-           (DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year - 1 day')::date
+           (DATE_TRUNC('year', CURRENT_DATE - INTERVAL '3 months')
+             + INTERVAL '3 months')::date,
+           (DATE_TRUNC('year', CURRENT_DATE - INTERVAL '3 months')
+             + INTERVAL '15 months - 1 day')::date
          )
        ) AS value(period_type, period_start, period_end)
      )

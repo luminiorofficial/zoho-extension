@@ -11,9 +11,24 @@ interface PeriodProgressCardsProps {
 const labels = {
   WEEKLY: 'Weekly',
   MONTHLY: 'Monthly',
-  QUARTERLY: 'Quarterly',
-  YEARLY: 'Yearly',
+  QUARTERLY: 'Financial Quarter',
+  YEARLY: 'Financial Year',
 };
+
+function periodLabel(period: PeriodProgress): string {
+  if (period.periodType === 'QUARTERLY') {
+    const startMonth = Number(period.periodStart.slice(5, 7));
+    const quarter = startMonth === 4 ? 1 : startMonth === 7 ? 2 : startMonth === 10 ? 3 : 4;
+    return `${labels.QUARTERLY} · Q${quarter}`;
+  }
+
+  if (period.periodType === 'YEARLY') {
+    const startYear = Number(period.periodStart.slice(0, 4));
+    return `${labels.YEARLY} · FY ${startYear}–${String(startYear + 1).slice(-2)}`;
+  }
+
+  return labels[period.periodType];
+}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('en-IN', {
@@ -34,7 +49,7 @@ export default function PeriodProgressCards({ progress }: PeriodProgressCardsPro
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-slate-700">
-                {labels[period.periodType]}
+                {periodLabel(period)}
               </p>
               <p className="mt-1 text-xs text-slate-400">
                 {formatDate(period.periodStart)} – {formatDate(period.periodEnd)}

@@ -100,7 +100,7 @@ export default async function DepartmentPage({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Daily tasks roll up automatically into weekly, monthly, quarterly, and yearly progress.
+            Daily tasks roll up automatically into weekly, monthly, financial-quarter, and April–March financial-year progress.
           </p>
         </div>
 
