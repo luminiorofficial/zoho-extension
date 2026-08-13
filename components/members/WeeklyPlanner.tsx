@@ -41,7 +41,10 @@ export default function WeeklyPlanner({
   const [showForm, setShowForm] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
   const [actionId, setActionId] = useState('');
-  const [weekStart, setWeekStart] = useState(isoWeekStart(today()));
+  const currentWeekStart = isoWeekStart(today());
+  const currentWeekGoals = weekGoals.filter(
+    (weekGoal) => weekGoal.weekStart === currentWeekStart,
+  );
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [pending, setPending] = useState(false);
@@ -69,7 +72,7 @@ export default function WeeklyPlanner({
           memberId,
           projectId,
           actionId: selectedActionId,
-          weekStart,
+          weekStart: currentWeekStart,
           title,
           description,
         }),
@@ -156,15 +159,14 @@ export default function WeeklyPlanner({
             </label>
 
             <label className="text-sm font-medium text-slate-700">
-              Week containing
+              Current week
               <input
-                required
                 type="date"
-                value={weekStart}
-                onChange={(event) => setWeekStart(isoWeekStart(event.target.value))}
-                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                readOnly
+                value={currentWeekStart}
+                className="mt-1.5 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600"
               />
-              <span className="mt-1 block text-xs font-normal text-slate-400">Stored as Monday–Sunday.</span>
+              <span className="mt-1 block text-xs font-normal text-slate-400">Monday-Sunday; other weeks cannot be selected.</span>
             </label>
 
             <label className="text-sm font-medium text-slate-700">
@@ -202,7 +204,7 @@ export default function WeeklyPlanner({
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {weekGoals.map((weekGoal) => (
+        {currentWeekGoals.map((weekGoal) => (
           <div key={weekGoal.id} className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -226,9 +228,9 @@ export default function WeeklyPlanner({
           </div>
         ))}
 
-        {!weekGoals.length && (
+        {!currentWeekGoals.length && (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white py-8 text-center text-sm text-slate-500 lg:col-span-2">
-            Create a weekly goal, then break it into daily tasks below.
+            Create a goal for this week, then break it into daily tasks below.
           </div>
         )}
       </div>

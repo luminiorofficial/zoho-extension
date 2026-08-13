@@ -45,6 +45,19 @@ export async function POST(request: Request) {
   try {
     await client.query('BEGIN');
 
+    const currentWeekResult = await client.query<{ week_start: string }>(
+      `SELECT DATE_TRUNC('week', CURRENT_DATE)::date::text AS week_start`,
+    );
+    const currentWeekStart = currentWeekResult.rows[0].week_start;
+
+    if (weekStart !== currentWeekStart) {
+      await client.query('ROLLBACK');
+      return Response.json(
+        { error: 'Weekly goals can only be created for the current week.' },
+        { status: 400 },
+      );
+    }
+
     const hierarchyResult = await client.query(
       `SELECT a.goal_id, p.department_id
          FROM actions a

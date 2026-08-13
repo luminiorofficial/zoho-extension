@@ -1,12 +1,22 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { CalendarDays, Check, ClipboardList, Pencil, Plus, X } from 'lucide-react';
+import {
+  CalendarCheck2,
+  CalendarDays,
+  Check,
+  ClipboardList,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import PeriodProgressCards from '@/components/common/PeriodProgressCards';
 import StatusBadge from '@/components/common/StatusBadge';
 import WeeklyPlanner from '@/components/members/WeeklyPlanner';
+import { isoWeekStart } from '@/lib/planner-validation';
 import type {
   ActionStatus,
   DailyTask,
@@ -37,6 +47,12 @@ function databaseStatus(status: ActionStatus): string {
   return 'NOT_STARTED';
 }
 
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function MemberWorkClient({ member, initialWork }: MemberWorkClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialWork.tasks);
@@ -50,9 +66,21 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editTaskDate, setEditTaskDate] = useState('');
 
-  const selectedWeekGoal = initialWork.weekGoals.find((weekGoal) => weekGoal.id === weekGoalId)
-    ?? initialWork.weekGoals[0];
+  const currentDate = today();
+  const currentWeekStart = isoWeekStart(currentDate);
+  const currentWeekEnd = addDays(currentWeekStart, 6);
+  const currentWeekGoals = initialWork.weekGoals.filter(
+    (weekGoal) => weekGoal.weekStart === currentWeekStart,
+  );
+  const currentWeekTasks = tasks.filter(
+    (task) => task.taskDate >= currentWeekStart && task.taskDate <= currentWeekEnd,
+  );
+  const todayTasks = currentWeekTasks.filter((task) => task.taskDate === currentDate);
+
+  const selectedWeekGoal = currentWeekGoals.find((weekGoal) => weekGoal.id === weekGoalId)
+    ?? currentWeekGoals[0];
   const selectedTaskDate = selectedWeekGoal
     && (taskDate < selectedWeekGoal.weekStart || taskDate > selectedWeekGoal.weekEnd)
     ? selectedWeekGoal.weekStart
@@ -115,10 +143,34 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
     }
   }
 
+  async function deleteTask(task: DailyTask) {
+    if (!window.confirm(`Delete "${task.title}"? This cannot be undone.`)) return;
+
+    setPending(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+      const body = await response.json() as { deletedTaskId?: string; error?: string };
+      if (!response.ok || body.deletedTaskId !== task.id) {
+        throw new Error(body.error ?? 'Could not delete task.');
+      }
+
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      if (editingId === task.id) setEditingId(null);
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete task.');
+    } finally {
+      setPending(false);
+    }
+  }
+
   function beginEdit(task: DailyTask) {
     setEditingId(task.id);
     setEditTitle(task.title);
     setEditDescription(task.description ?? '');
+    setEditTaskDate(task.taskDate);
   }
 
   return (
@@ -152,7 +204,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           <button
             type="button"
             onClick={() => setShowForm((current) => !current)}
-            disabled={!initialWork.weekGoals.length}
+            disabled={!currentWeekGoals.length}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {showForm ? <X size={17} /> : <Plus size={17} />}
@@ -160,9 +212,9 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           </button>
         </div>
 
-        {!initialWork.weekGoals.length && (
+        {!currentWeekGoals.length && (
           <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            Create a weekly goal in the planner before adding daily tasks.
+            Create a goal for the current week before adding daily tasks.
           </div>
         )}
 
@@ -183,7 +235,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
                   }}
                   className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
                 >
-                  {initialWork.weekGoals.map((weekGoal) => (
+                  {currentWeekGoals.map((weekGoal) => (
                     <option key={weekGoal.id} value={weekGoal.id}>
                       {weekGoal.title} · {weekGoal.projectName} · {weekGoal.weekStart}
                     </option>
@@ -242,92 +294,175 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
         )}
 
-        <div className="space-y-3">
-          {tasks.map((task) => (
-            <div key={task.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              {editingId === task.id ? (
-                <div>
-                  <div className="grid gap-3">
-                    <input
-                      value={editTitle}
-                      onChange={(event) => setEditTitle(event.target.value)}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                    />
-                    <textarea
-                      value={editDescription}
-                      onChange={(event) => setEditDescription(event.target.value)}
-                      rows={2}
-                      className="resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => updateTask(task.id, { title: editTitle, description: editDescription })}
-                      className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white"
-                    >
-                      <Check size={14} /> Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 shrink-0 text-blue-600" />
-                      <h3 className="font-semibold text-slate-900">{task.title}</h3>
-                    </div>
-                    {task.description && <p className="mt-2 text-sm text-slate-500">{task.description}</p>}
-                    <p className="mt-3 text-xs text-slate-400">
-                      {task.actionTitle} → {task.projectName} → {task.weekGoalTitle}
+        <div className="mb-7 rounded-xl border border-blue-100 bg-blue-50/50 p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 font-semibold text-slate-900">
+              <CalendarCheck2 className="h-5 w-5 text-blue-600" /> Today&apos;s Tasks
+            </h3>
+            <span className="text-xs font-medium text-slate-500">{currentDate}</span>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            {todayTasks.map((task) => (
+              <div key={task.id} className="rounded-lg border border-blue-100 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900">{task.title}</p>
+                    <p className="mt-1 truncate text-xs text-slate-500">
+                      {task.weekGoalTitle} · {task.projectName}
                     </p>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={task.status} size="sm" />
-                    <button
-                      type="button"
-                      onClick={() => beginEdit(task)}
-                      aria-label={`Edit ${task.title}`}
-                      className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <CalendarDays size={14} />
-                  {task.taskDate}
+                  <StatusBadge status={task.status} size="sm" />
                 </div>
                 <select
-                  aria-label={`Status for ${task.title}`}
+                  aria-label={`Status for today's task ${task.title}`}
                   value={databaseStatus(task.status)}
                   disabled={pending}
                   onChange={(event) => updateTask(task.id, { status: event.target.value })}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                  className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
                 >
                   {statusOptions.map((status) => (
                     <option key={status.value} value={status.value}>{status.label}</option>
                   ))}
                 </select>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {!tasks.length && (
+            {!todayTasks.length && (
+              <p className="text-sm text-slate-500 lg:col-span-2">No tasks are scheduled for today.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="font-semibold text-slate-900">Current Week Tasks</h3>
+          <span className="text-xs text-slate-500">
+            {currentWeekStart} to {currentWeekEnd} · {currentWeekTasks.length} task{currentWeekTasks.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <div className="space-y-3">
+          {currentWeekTasks.map((task) => {
+            const taskWeekGoal = currentWeekGoals.find((weekGoal) => weekGoal.id === task.weekGoalId);
+
+            return (
+              <div key={task.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                {editingId === task.id ? (
+                  <div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="text-xs font-medium text-slate-600 md:col-span-2">
+                        Task
+                        <input
+                          required
+                          value={editTitle}
+                          onChange={(event) => setEditTitle(event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-600">
+                        Task date
+                        <input
+                          required
+                          type="date"
+                          min={taskWeekGoal?.weekStart}
+                          max={taskWeekGoal?.weekEnd}
+                          value={editTaskDate}
+                          onChange={(event) => setEditTaskDate(event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-600 md:col-span-2">
+                        Notes
+                        <textarea
+                          value={editDescription}
+                          onChange={(event) => setEditDescription(event.target.value)}
+                          rows={2}
+                          className="mt-1 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={pending || !editTitle.trim()}
+                        onClick={() => updateTask(task.id, {
+                          title: editTitle,
+                          description: editDescription,
+                          taskDate: editTaskDate,
+                        })}
+                        className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                      >
+                        <Check size={14} /> Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <ClipboardList className="h-4 w-4 shrink-0 text-blue-600" />
+                        <h3 className="font-semibold text-slate-900">{task.title}</h3>
+                      </div>
+                      {task.description && <p className="mt-2 text-sm text-slate-500">{task.description}</p>}
+                      <p className="mt-3 text-xs text-slate-400">
+                        {task.actionTitle} → {task.projectName} → {task.weekGoalTitle}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={task.status} size="sm" />
+                      <button
+                        type="button"
+                        onClick={() => beginEdit(task)}
+                        aria-label={`Edit ${task.title}`}
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => deleteTask(task)}
+                        aria-label={`Delete ${task.title}`}
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <CalendarDays size={14} />
+                    {task.taskDate}
+                  </div>
+                  <select
+                    aria-label={`Status for ${task.title}`}
+                    value={databaseStatus(task.status)}
+                    disabled={pending}
+                    onChange={(event) => updateTask(task.id, { status: event.target.value })}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                  >
+                    {statusOptions.map((status) => (
+                      <option key={status.value} value={status.value}>{status.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
+
+          {!currentWeekTasks.length && (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white py-10 text-center text-sm text-slate-500">
-              No daily tasks have been created for this member.
+              No daily tasks have been created for the current week.
             </div>
           )}
         </div>

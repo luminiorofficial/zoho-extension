@@ -1,18 +1,16 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/lib/db';
+import { isDate, isUuid } from '@/lib/planner-validation';
 
 interface TaskPatchPayload {
   title?: unknown;
   description?: unknown;
+  taskDate?: unknown;
   status?: unknown;
 }
 
 const statuses = new Set(['NOT_STARTED', 'IN_PROGRESS', 'DONE']);
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
 
 export async function PATCH(
   request: Request,
@@ -48,6 +46,14 @@ export async function PATCH(
     changes.push(`description = $${values.length}`);
   }
 
+  if ('taskDate' in payload) {
+    if (!isDate(payload.taskDate)) {
+      return Response.json({ error: 'Invalid task date.' }, { status: 400 });
+    }
+    values.push(payload.taskDate);
+    changes.push(`task_date = $${values.length}`);
+  }
+
   if ('status' in payload) {
     if (typeof payload.status !== 'string' || !statuses.has(payload.status)) {
       return Response.json({ error: 'Invalid task status.' }, { status: 400 });
@@ -61,6 +67,25 @@ export async function PATCH(
   }
 
   try {
+    if (isDate(payload.taskDate)) {
+      const weekResult = await db.query<{ is_in_week: boolean }>(
+        `SELECT $2::date BETWEEN week_start AND week_start + 6 AS is_in_week
+           FROM tasks
+          WHERE id = $1`,
+        [id, payload.taskDate],
+      );
+
+      if (!weekResult.rows[0]) {
+        return Response.json({ error: 'Task not found.' }, { status: 404 });
+      }
+      if (!weekResult.rows[0].is_in_week) {
+        return Response.json(
+          { error: 'The task date must fall within its selected weekly goal.' },
+          { status: 400 },
+        );
+      }
+    }
+
     const result = await db.query(
       `WITH updated AS (
          UPDATE tasks
@@ -103,5 +128,47 @@ export async function PATCH(
   } catch (error) {
     console.error('Could not update task:', error);
     return Response.json({ error: 'Could not update the daily task.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: RouteContext<'/api/tasks/[id]'>,
+) {
+  const { id } = await context.params;
+  if (!isUuid(id)) {
+    return Response.json({ error: 'Invalid task id.' }, { status: 400 });
+  }
+
+  try {
+    const result = await db.query<{
+      id: string;
+      assignedMemberId: string;
+      departmentId: string;
+    }>(
+      `WITH deleted AS (
+         DELETE FROM tasks
+          WHERE id = $1
+          RETURNING id, week_goal_id, assigned_member_id
+       )
+       SELECT d.id,
+              d.assigned_member_id AS "assignedMemberId",
+              wg.department_id AS "departmentId"
+         FROM deleted d
+         JOIN week_goals wg ON wg.id = d.week_goal_id`,
+      [id],
+    );
+
+    const task = result.rows[0];
+    if (!task) return Response.json({ error: 'Task not found.' }, { status: 404 });
+
+    revalidatePath(`/members/${task.assignedMemberId}`);
+    revalidatePath(`/departments/${task.departmentId}`);
+    revalidatePath('/dashboard');
+
+    return Response.json({ deletedTaskId: task.id });
+  } catch (error) {
+    console.error('Could not delete task:', error);
+    return Response.json({ error: 'Could not delete the daily task.' }, { status: 500 });
   }
 }
