@@ -70,7 +70,7 @@ async function run(): Promise<void> {
   try {
     await client.query('BEGIN');
     await client.query(`CREATE SCHEMA ${schema}`);
-    await client.query(`SET LOCAL search_path TO ${schema}, public`);
+    await client.query(`SET LOCAL search_path TO ${schema}`);
 
     for (const migration of [
       '001_init.sql',
@@ -81,6 +81,7 @@ async function run(): Promise<void> {
       '006_structure_crud.sql',
       '007_employee_workflow.sql',
       '008_kpi_evaluations.sql',
+      '009_excel_migration_provenance.sql',
     ]) {
       await client.query(fs.readFileSync(path.join(process.cwd(), 'database', migration), 'utf8'));
     }
