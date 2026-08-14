@@ -211,6 +211,7 @@ export interface DailyTask {
   title: string;
   description?: string;
   status: ActionStatus;
+  carriedForward?: boolean;
 }
 
 export interface WeekGoal {

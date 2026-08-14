@@ -1,7 +1,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/lib/db';
-import { isDate, isUuid } from '@/lib/planner-validation';
+import { isDate, isUuid, textValue } from '@/lib/planner-validation';
 
 interface TaskPatchPayload {
   title?: unknown;
@@ -32,16 +32,17 @@ export async function PATCH(
   const values: unknown[] = [id];
 
   if ('title' in payload) {
-    const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+    const title = textValue(payload.title, 500);
     if (!title) return Response.json({ error: 'Task title cannot be empty.' }, { status: 400 });
     values.push(title);
     changes.push(`title = $${values.length}`);
   }
 
   if ('description' in payload) {
-    const description = typeof payload.description === 'string'
-      ? payload.description.trim()
-      : '';
+    const description = textValue(payload.description, 5000);
+    if (description === null) {
+      return Response.json({ error: 'Task notes must be 5,000 characters or fewer.' }, { status: 400 });
+    }
     values.push(description || null);
     changes.push(`description = $${values.length}`);
   }
@@ -69,7 +70,7 @@ export async function PATCH(
   try {
     if (isDate(payload.taskDate)) {
       const weekResult = await db.query<{ is_in_week: boolean }>(
-        `SELECT $2::date BETWEEN week_start AND week_start + 6 AS is_in_week
+        `SELECT $2::date BETWEEN week_start AND week_start + 4 AS is_in_week
            FROM tasks
           WHERE id = $1`,
         [id, payload.taskDate],
@@ -80,7 +81,7 @@ export async function PATCH(
       }
       if (!weekResult.rows[0].is_in_week) {
         return Response.json(
-          { error: 'The task date must fall within its selected weekly goal.' },
+          { error: 'The task date must fall Monday–Friday within its weekly goal.' },
           { status: 400 },
         );
       }
@@ -129,6 +130,12 @@ export async function PATCH(
 
     return Response.json({ task });
   } catch (error) {
+    if (typeof error === 'object' && error && 'code' in error && error.code === '23514') {
+      return Response.json(
+        { error: 'Daily tasks must remain in an active Monday–Friday weekly plan.' },
+        { status: 400 },
+      );
+    }
     console.error('Could not update task:', error);
     return Response.json({ error: 'Could not update the daily task.' }, { status: 500 });
   }

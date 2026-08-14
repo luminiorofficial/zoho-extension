@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Check,
   ClipboardList,
+  Forward,
   Pencil,
   Plus,
   Trash2,
@@ -67,10 +68,13 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editTaskDate, setEditTaskDate] = useState('');
+  const [carryMessage, setCarryMessage] = useState('');
 
   const currentDate = today();
   const currentWeekStart = isoWeekStart(currentDate);
-  const currentWeekEnd = addDays(currentWeekStart, 6);
+  const currentWeekEnd = addDays(currentWeekStart, 4);
+  const previousWeekStart = addDays(currentWeekStart, -7);
+  const previousWeekEnd = addDays(previousWeekStart, 6);
   const currentWeekGoals = initialWork.weekGoals.filter(
     (weekGoal) => weekGoal.weekStart === currentWeekStart,
   );
@@ -78,6 +82,15 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
     (task) => task.taskDate >= currentWeekStart && task.taskDate <= currentWeekEnd,
   );
   const todayTasks = currentWeekTasks.filter((task) => task.taskDate === currentDate);
+  const unfinishedPreviousWeekTasks = tasks.filter((task) => (
+    task.taskDate >= previousWeekStart
+    && task.taskDate <= previousWeekEnd
+    && task.status !== 'Done'
+    && !task.carriedForward
+  ));
+  const workWeekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(
+    (label, index) => ({ label, date: addDays(currentWeekStart, index) }),
+  );
 
   const selectedWeekGoal = currentWeekGoals.find((weekGoal) => weekGoal.id === weekGoalId)
     ?? currentWeekGoals[0];
@@ -166,6 +179,38 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
     }
   }
 
+  async function carryForward() {
+    setPending(true);
+    setError('');
+    setCarryMessage('');
+
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: member.id, sourceWeekStart: previousWeekStart }),
+      });
+      const body = await response.json() as {
+        carriedTaskCount?: number;
+        skippedTaskCount?: number;
+        error?: string;
+      };
+      if (!response.ok || body.carriedTaskCount === undefined) {
+        throw new Error(body.error ?? 'Could not carry unfinished tasks forward.');
+      }
+
+      const skipped = body.skippedTaskCount ?? 0;
+      setCarryMessage(
+        `${body.carriedTaskCount} unfinished task${body.carriedTaskCount === 1 ? '' : 's'} carried into this week${skipped ? `; ${skipped} inactive assignment${skipped === 1 ? ' was' : 's were'} skipped` : ''}.`,
+      );
+      router.refresh();
+    } catch (carryError) {
+      setError(carryError instanceof Error ? carryError.message : 'Could not carry tasks forward.');
+    } finally {
+      setPending(false);
+    }
+  }
+
   function beginEdit(task: DailyTask) {
     setEditingId(task.id);
     setEditTitle(task.title);
@@ -197,7 +242,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Daily Tasks</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Goal → Action → Project → Week Goal → Daily Task
+              Department → Goal → Action → Project → Member → Week Goal → Daily Task
             </p>
           </div>
 
@@ -260,6 +305,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
                 Daily task
                 <input
                   required
+                  maxLength={500}
                   value={taskTitle}
                   onChange={(event) => setTaskTitle(event.target.value)}
                   placeholder="Specific work to complete today"
@@ -270,6 +316,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
               <label className="text-sm font-medium text-slate-700 md:col-span-2">
                 Notes
                 <textarea
+                  maxLength={5000}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   rows={2}
@@ -292,6 +339,27 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
 
         {error && !showForm && (
           <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
+        )}
+
+        {(unfinishedPreviousWeekTasks.length > 0 || carryMessage) && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50/60 p-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Carry forward unfinished work</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {carryMessage || `${unfinishedPreviousWeekTasks.length} unfinished task${unfinishedPreviousWeekTasks.length === 1 ? '' : 's'} from ${previousWeekStart}–${previousWeekEnd}.`}
+              </p>
+            </div>
+            {unfinishedPreviousWeekTasks.length > 0 && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => void carryForward()}
+                className="flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"
+              >
+                <Forward size={16} /> Carry into this week
+              </button>
+            )}
+          </div>
         )}
 
         <div className="mb-7 rounded-xl border border-blue-100 bg-blue-50/50 p-5">
@@ -334,8 +402,60 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
           </div>
         </div>
 
+        <div className="mb-7">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-slate-900">Monday–Friday Plan</h3>
+            <span className="text-xs text-slate-500">{currentWeekStart} to {currentWeekEnd}</span>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-5">
+            {workWeekDays.map((day) => {
+              const dayTasks = currentWeekTasks.filter((task) => task.taskDate === day.date);
+              const isToday = day.date === currentDate;
+
+              return (
+                <div
+                  key={day.date}
+                  className={`min-h-44 rounded-xl border p-3 ${isToday ? 'border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-white'}`}
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className={`text-xs font-semibold uppercase tracking-wide ${isToday ? 'text-blue-700' : 'text-slate-600'}`}>
+                        {day.label}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">{day.date}</p>
+                    </div>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500">
+                      {dayTasks.length}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {dayTasks.map((task) => (
+                      <div key={task.id} className="rounded-lg border border-slate-100 bg-white p-2.5 shadow-sm">
+                        <p className="text-xs font-medium text-slate-800">{task.title}</p>
+                        <p className="mt-1 truncate text-[11px] text-slate-400">{task.weekGoalTitle}</p>
+                        <select
+                          aria-label={`Status for ${task.title} on ${day.label}`}
+                          value={databaseStatus(task.status)}
+                          disabled={pending}
+                          onChange={(event) => updateTask(task.id, { status: event.target.value })}
+                          className="mt-2 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 outline-none focus:border-blue-500"
+                        >
+                          {statusOptions.map((status) => (
+                            <option key={status.value} value={status.value}>{status.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                    {!dayTasks.length && <p className="py-4 text-center text-xs text-slate-400">No tasks</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="font-semibold text-slate-900">Current Week Tasks</h3>
+          <h3 className="font-semibold text-slate-900">Task Details</h3>
           <span className="text-xs text-slate-500">
             {currentWeekStart} to {currentWeekEnd} · {currentWeekTasks.length} task{currentWeekTasks.length === 1 ? '' : 's'}
           </span>
@@ -354,6 +474,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
                         Task
                         <input
                           required
+                          maxLength={500}
                           value={editTitle}
                           onChange={(event) => setEditTitle(event.target.value)}
                           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
@@ -374,6 +495,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
                       <label className="text-xs font-medium text-slate-600 md:col-span-2">
                         Notes
                         <textarea
+                          maxLength={5000}
                           value={editDescription}
                           onChange={(event) => setEditDescription(event.target.value)}
                           rows={2}

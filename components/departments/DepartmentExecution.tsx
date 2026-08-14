@@ -32,7 +32,7 @@ export default function DepartmentExecution({
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-slate-900">Execution Flow</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Department → Goal → Action → Member → Week Goal → Daily Task
+          Department → Goal → Action → Project → Member → Week Goal → Daily Task
         </p>
       </div>
 

@@ -30,3 +30,17 @@ export function isoWeekStart(value: string): string {
   date.setUTCDate(date.getUTCDate() - daysSinceMonday);
   return date.toISOString().slice(0, 10);
 }
+
+export function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function isBusinessDayInWeek(taskDate: string, weekStart: string): boolean {
+  if (!isDate(taskDate) || !isDate(weekStart) || isoWeekStart(weekStart) !== weekStart) {
+    return false;
+  }
+
+  return taskDate >= weekStart && taskDate <= addDays(weekStart, 4);
+}

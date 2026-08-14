@@ -144,21 +144,9 @@ export async function getStructureData(): Promise<StructureData> {
               g.start_date::text,
               g.end_date::text,
               g.is_active,
-              COALESCE(task_progress.progress_percent, g.progress_percent) AS progress_percent
+              COALESCE(gtp.progress_percent, g.progress_percent) AS progress_percent
          FROM goals g
-         LEFT JOIN (
-           SELECT a.goal_id,
-                  ROUND(AVG(
-                    CASE t.status
-                      WHEN 'DONE' THEN 100
-                      WHEN 'IN_PROGRESS' THEN 50
-                      ELSE 0
-                    END
-                  ), 2) AS progress_percent
-             FROM tasks t
-             JOIN actions a ON a.id = t.action_id
-            GROUP BY a.goal_id
-         ) task_progress ON task_progress.goal_id = g.id
+         LEFT JOIN goal_task_progress gtp ON gtp.goal_id = g.id
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, title`,
     ),
     db.query<TargetRow>(

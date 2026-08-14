@@ -1,7 +1,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/lib/db';
-import { isDate, isoWeekStart, isUuid } from '@/lib/planner-validation';
+import { isDate, isoWeekStart, isUuid, textValue } from '@/lib/planner-validation';
 
 interface WeekGoalPayload {
   memberId?: unknown;
@@ -21,10 +21,10 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
-  const title = typeof payload.title === 'string' ? payload.title.trim() : '';
-  const description = typeof payload.description === 'string'
-    ? payload.description.trim()
-    : '';
+  const title = textValue(payload.title, 500);
+  const description = payload.description === undefined
+    ? ''
+    : textValue(payload.description, 5000);
 
   if (
     !isUuid(payload.memberId)
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     || !isUuid(payload.actionId)
     || !isDate(payload.weekStart)
     || !title
+    || description === null
   ) {
     return Response.json(
       { error: 'Member, project, action, week, and goal title are required.' },
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
          JOIN projects p
            ON p.id = $2
           AND p.goal_id = a.goal_id
+          AND p.status IN ('PLANNED', 'ACTIVE', 'INTERNAL_REVIEW', 'CLIENT_REVIEW')
          JOIN department_members dm
            ON dm.department_id = p.department_id
           AND dm.member_id = $3
@@ -146,6 +148,13 @@ export async function POST(request: Request) {
       return Response.json(
         { error: 'This weekly goal already exists for the selected week.' },
         { status: 409 },
+      );
+    }
+
+    if (typeof error === 'object' && error && 'code' in error && error.code === '23514') {
+      return Response.json(
+        { error: 'Weekly goals can only use active, compatible planning assignments.' },
+        { status: 400 },
       );
     }
 

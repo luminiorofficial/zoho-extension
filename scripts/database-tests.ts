@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Pool, type PoolClient } from 'pg';
 
 import { getCapacityStatus } from '../lib/capacity';
+import { isBusinessDayInWeek, isoWeekStart, textValue } from '../lib/planner-validation';
 import { MEMBER_WORKLOAD_QUERY } from '../lib/workload-query';
 
 function loadLocalEnvironment(): void {
@@ -27,6 +28,7 @@ async function expectConstraintFailure(
   savepoint: string,
   query: string,
   values: unknown[],
+  expectedCode = '23514',
 ): Promise<void> {
   await client.query(`SAVEPOINT ${savepoint}`);
   try {
@@ -35,8 +37,8 @@ async function expectConstraintFailure(
   } catch (error) {
     await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
     assert(
-      typeof error === 'object' && error !== null && 'code' in error && error.code === '23514',
-      `Expected PostgreSQL check violation at ${savepoint}.`,
+      typeof error === 'object' && error !== null && 'code' in error && error.code === expectedCode,
+      `Expected PostgreSQL error ${expectedCode} at ${savepoint}.`,
     );
   }
 }
@@ -44,6 +46,10 @@ async function expectConstraintFailure(
 async function run(): Promise<void> {
   loadLocalEnvironment();
   assert(process.env.DATABASE_URL, 'DATABASE_URL is required for database tests.');
+  assert(isoWeekStart('2026-08-14') === '2026-08-10', 'Week validation must normalize to Monday.');
+  assert(isBusinessDayInWeek('2026-08-14', '2026-08-10'), 'Friday must be a valid work-plan day.');
+  assert(!isBusinessDayInWeek('2026-08-15', '2026-08-10'), 'Saturday must not be a work-plan day.');
+  assert(textValue('x'.repeat(501), 500) === null, 'Planning titles over 500 characters must be rejected.');
 
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -65,6 +71,7 @@ async function run(): Promise<void> {
       '004_project_management_closure.sql',
       '005_attendance_leave.sql',
       '006_structure_crud.sql',
+      '007_employee_workflow.sql',
     ]) {
       await client.query(fs.readFileSync(path.join(process.cwd(), 'database', migration), 'utf8'));
     }
@@ -243,6 +250,19 @@ async function run(): Promise<void> {
       [weekGoal.rows[0].id, action.rows[0].id, projectId, memberId],
     );
 
+    await expectConstraintFailure(
+      client,
+      'weekend_task',
+      `INSERT INTO tasks (
+         week_goal_id, action_id, project_id, assigned_member_id,
+         week_start, title, task_date, status
+       ) VALUES (
+         $1, $2, $3, $4, DATE_TRUNC('week', CURRENT_DATE)::date,
+         'Weekend task', DATE_TRUNC('week', CURRENT_DATE)::date + 5, 'NOT_STARTED'
+       )`,
+      [weekGoal.rows[0].id, action.rows[0].id, projectId, memberId],
+    );
+
     const workload = await client.query<{
       member_id: string;
       active_project_count: number;
@@ -293,17 +313,73 @@ async function run(): Promise<void> {
     );
 
     const progress = await client.query<{
-      total_tasks: number;
-      done_tasks: number;
-      progress_percent: string;
+      week_goal_progress: string;
+      action_progress: string;
+      project_progress: string;
+      goal_progress: string;
     }>(
-      `SELECT total_tasks, done_tasks, progress_percent
-         FROM project_task_progress WHERE project_id = $1`,
-      [projectId],
+      `SELECT wgp.progress_percent AS week_goal_progress,
+              atp.progress_percent AS action_progress,
+              ptp.progress_percent AS project_progress,
+              gtp.progress_percent AS goal_progress
+         FROM week_goal_progress wgp
+         JOIN week_goals wg ON wg.id = wgp.week_goal_id
+         JOIN action_task_progress atp ON atp.action_id = wg.action_id
+         JOIN project_task_progress ptp ON ptp.project_id = wg.project_id
+         JOIN goal_task_progress gtp ON gtp.goal_id = wg.goal_id
+        WHERE wg.id = $1`,
+      [weekGoal.rows[0].id],
     );
-    assert(progress.rows[0].total_tasks === 3, 'Project progress must count linked daily tasks.');
-    assert(progress.rows[0].done_tasks === 1, 'Project progress must count completed daily tasks.');
-    assert(Number(progress.rows[0].progress_percent) === 50, 'Task-derived project progress must average to 50%.');
+    assert(Number(progress.rows[0].week_goal_progress) === 50, 'Weekly-goal progress must average task statuses.');
+    assert(Number(progress.rows[0].action_progress) === 50, 'Action progress must update from daily tasks.');
+    assert(Number(progress.rows[0].project_progress) === 50, 'Project progress must update from daily tasks.');
+    assert(Number(progress.rows[0].goal_progress) === 50, 'Goal progress must update from daily tasks.');
+
+    await client.query('SAVEPOINT carry_forward_test');
+    const sourceTask = await client.query<{ id: string }>(
+      `SELECT id FROM tasks WHERE week_goal_id = $1 AND status = 'NOT_STARTED' LIMIT 1`,
+      [weekGoal.rows[0].id],
+    );
+    const nextWeekPlan = await client.query<{ id: string }>(
+      `INSERT INTO week_plans (department_id, member_id, week_start)
+       VALUES ($1, $2, DATE_TRUNC('week', CURRENT_DATE)::date + 7)
+       RETURNING id`,
+      [departmentId, memberId],
+    );
+    const nextWeekGoal = await client.query<{ id: string }>(
+      `INSERT INTO week_goals (
+         week_plan_id, department_id, assigned_member_id, goal_id,
+         action_id, project_id, week_start, title
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6,
+         DATE_TRUNC('week', CURRENT_DATE)::date + 7, 'Carried Project Test Week'
+       ) RETURNING id`,
+      [nextWeekPlan.rows[0].id, departmentId, memberId, goal.rows[0].id, action.rows[0].id, projectId],
+    );
+    await client.query(
+      `INSERT INTO tasks (
+         week_goal_id, action_id, project_id, assigned_member_id,
+         week_start, title, task_date, carried_from_task_id
+       ) VALUES (
+         $1, $2, $3, $4, DATE_TRUNC('week', CURRENT_DATE)::date + 7,
+         'Carried task', DATE_TRUNC('week', CURRENT_DATE)::date + 7, $5
+       )`,
+      [nextWeekGoal.rows[0].id, action.rows[0].id, projectId, memberId, sourceTask.rows[0].id],
+    );
+    await expectConstraintFailure(
+      client,
+      'duplicate_carry',
+      `INSERT INTO tasks (
+         week_goal_id, action_id, project_id, assigned_member_id,
+         week_start, title, task_date, carried_from_task_id
+       ) VALUES (
+         $1, $2, $3, $4, DATE_TRUNC('week', CURRENT_DATE)::date + 7,
+         'Duplicate carried task', DATE_TRUNC('week', CURRENT_DATE)::date + 7, $5
+       )`,
+      [nextWeekGoal.rows[0].id, action.rows[0].id, projectId, memberId, sourceTask.rows[0].id],
+      '23505',
+    );
+    await client.query('ROLLBACK TO SAVEPOINT carry_forward_test');
 
     const firstClosureItem = await client.query<{ id: string }>(
       `SELECT id FROM project_closure_items WHERE project_id = $1 LIMIT 1`,
@@ -376,6 +452,13 @@ async function run(): Promise<void> {
     await client.query(`UPDATE goals SET is_active = FALSE WHERE id = $1`, [goal.rows[0].id]);
     await client.query(`UPDATE members SET is_active = FALSE WHERE id = $1`, [memberId]);
     await client.query(`UPDATE departments SET is_active = FALSE WHERE id = $1`, [departmentId]);
+    await expectConstraintFailure(
+      client,
+      'inactive_week_plan',
+      `INSERT INTO week_plans (department_id, member_id, week_start)
+       VALUES ($1, $2, DATE_TRUNC('week', CURRENT_DATE)::date + 14)`,
+      [departmentId, memberId],
+    );
     const retainedAfterDeactivation = await client.query<{
       targets: number;
       actions: number;
@@ -397,7 +480,7 @@ async function run(): Promise<void> {
       'Structure deactivation must retain goals, targets, actions, tasks, and memberships.',
     );
 
-    console.log('Database tests passed: migrations, CRUD retention, attendance history, leave sync, hierarchy, progress, workload, capacity, and closure rules.');
+    console.log('Database tests passed: migrations, validation, CRUD retention, read-only history, leave sync, active hierarchy, Monday–Friday tasks, carry-forward, progress, workload, capacity, and closure rules.');
   } finally {
     await client.query('ROLLBACK');
     client.release();

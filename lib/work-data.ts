@@ -73,6 +73,7 @@ interface TaskRow extends QueryResultRow {
   title: string;
   description: string | null;
   status: string;
+  carried_forward: boolean;
 }
 
 interface PeriodProgressRow extends QueryResultRow {
@@ -176,6 +177,7 @@ function mapTask(row: TaskRow): DailyTask {
     title: row.title,
     description: row.description ?? undefined,
     status: mapStatus(row.status),
+    carriedForward: row.carried_forward,
   };
 }
 
@@ -247,7 +249,7 @@ async function getWeekGoals(
               wg.title,
               wg.description,
               wg.week_start,
-              (wg.week_start + 6) AS week_end,
+              (wg.week_start + 4) AS week_end,
               wg.action_id,
               a.title AS action_title,
               wg.project_id,
@@ -279,7 +281,11 @@ async function getWeekGoals(
               t.task_date,
               t.title,
               t.description,
-              t.status
+              t.status,
+              EXISTS (
+                SELECT 1 FROM tasks carried
+                 WHERE carried.carried_from_task_id = t.id
+              ) AS carried_forward
          FROM tasks t
          JOIN week_goals wg ON wg.id = t.week_goal_id
          JOIN actions a ON a.id = t.action_id
@@ -425,10 +431,14 @@ export async function getMemberWorkData(memberId: string): Promise<MemberWorkDat
               a.code
          FROM actions a
          JOIN goals g ON g.id = a.goal_id
+         JOIN departments d ON d.id = g.department_id
          JOIN action_assignees aa ON aa.action_id = a.id
+         JOIN members m ON m.id = aa.member_id
         WHERE aa.member_id = $1
           AND a.is_active
           AND g.is_active
+          AND d.is_active
+          AND m.is_active
         ORDER BY g.title, a.code NULLS LAST, a.title`,
       [memberId],
     ),
@@ -442,8 +452,14 @@ export async function getMemberWorkData(memberId: string): Promise<MemberWorkDat
     code: row.code ?? undefined,
   }));
 
+  const activeGoalIds = new Set(actions.map((action) => action.goalId));
+  const planningProjects = projects.filter((project) => (
+    activeGoalIds.has(project.goalId)
+    && ['Planned', 'Active', 'Internal Review', 'Client Review'].includes(project.status)
+  ));
+
   return {
-    projects,
+    projects: planningProjects,
     actions,
     weekGoals: execution.weekGoals,
     tasks: execution.tasks,

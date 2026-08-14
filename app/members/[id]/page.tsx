@@ -48,7 +48,11 @@ export default async function MemberPage({ params }: MemberPageProps) {
         leaveRequests={leaveRequests}
       />
 
-      <MemberWorkClient member={member} initialWork={work} />
+      <MemberWorkClient
+        key={work.tasks.map((task) => task.id).join(':')}
+        member={member}
+        initialWork={work}
+      />
     </Layout>
   );
 }
