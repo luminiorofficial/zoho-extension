@@ -11,6 +11,7 @@ import {
   FolderKanban,
   Gauge,
   CalendarCheck2,
+  ChartNoAxesCombined,
 } from 'lucide-react';
 
 const navigation = [
@@ -43,6 +44,11 @@ const navigation = [
     name: 'Attendance',
     href: '/attendance',
     icon: CalendarCheck2,
+  },
+  {
+    name: 'Reports & Evaluations',
+    href: '/reports',
+    icon: ChartNoAxesCombined,
   },
   {
     name: 'Settings',

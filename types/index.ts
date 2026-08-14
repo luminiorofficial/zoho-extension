@@ -62,6 +62,74 @@ export type PeriodType =
   | 'QUARTERLY'
   | 'YEARLY';
 
+export interface ReportingFilters {
+  departmentId?: string;
+  memberId?: string;
+  goalId?: string;
+  periodType: PeriodType;
+  periodDate: string;
+}
+
+export interface KpiReportRow {
+  targetId: string;
+  measurementId?: string;
+  departmentId: string;
+  departmentName: string;
+  goalId: string;
+  goalTitle: string;
+  memberId?: string;
+  title: string;
+  targetValue?: number;
+  targetUnit?: string;
+  achievedValue?: number;
+  progress?: number;
+  note?: string;
+}
+
+export interface TaskReportSummary {
+  totalTasks: number;
+  doneTasks: number;
+  progress: number;
+}
+
+export interface PeriodReview {
+  id: string;
+  departmentId?: string;
+  departmentName?: string;
+  memberId?: string;
+  memberName?: string;
+  goalId?: string;
+  goalTitle?: string;
+  periodType: PeriodType;
+  periodStart: string;
+  periodEnd: string;
+  score?: number;
+  summary?: string;
+  achievements?: string;
+  challenges?: string;
+  nextSteps?: string;
+  isImported: boolean;
+}
+
+export interface ReportingOption {
+  id: string;
+  name: string;
+  departmentId?: string;
+}
+
+export interface ReportingData {
+  filters: ReportingFilters;
+  periodStart: string;
+  periodEnd: string;
+  departments: ReportingOption[];
+  members: ReportingOption[];
+  goals: ReportingOption[];
+  taskProgress: TaskReportSummary;
+  kpis: KpiReportRow[];
+  kpiProgress: number;
+  reviews: PeriodReview[];
+}
+
 export interface PeriodProgress {
   periodType: PeriodType;
   periodStart: string;

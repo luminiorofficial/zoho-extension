@@ -38,7 +38,8 @@ export async function POST(request: Request) {
   if (
     !isUuid(payload.goalId) || !title || targetText === null || targetUnit === null
     || periodType === null || (periodType && !periods.has(periodType))
-    || targetValue === undefined || !isOptionalDate(payload.startDate) || !isOptionalDate(payload.endDate)
+    || targetValue === undefined || (targetValue !== null && targetValue <= 0)
+    || !isOptionalDate(payload.startDate) || !isOptionalDate(payload.endDate)
   ) {
     return Response.json({ error: 'Enter a title and valid KPI value, period, and dates.' }, { status: 400 });
   }
