@@ -4,6 +4,7 @@ import {
   DepartmentExecution,
   DepartmentGoalsClient,
   DepartmentAttendanceView,
+  CurrentProgressDonut,
   Layout,
   PeriodProgressCards,
   ProgressBar,
@@ -112,6 +113,10 @@ export default async function DepartmentPage({
         </div>
 
         <PeriodProgressCards progress={work.periodProgress} />
+
+        <div className="mt-5">
+          <CurrentProgressDonut progress={work.periodProgress[0]} />
+        </div>
       </div>
 
       <div className="mt-8">

@@ -143,6 +143,12 @@ export interface PeriodProgress {
   periodEnd: string;
   totalTasks: number;
   doneTasks: number;
+  statusCounts: {
+    done: number;
+    inProgress: number;
+    notStarted: number;
+    onHold: number;
+  };
   progress: number;
 }
 

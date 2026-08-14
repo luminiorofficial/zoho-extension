@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import AttendanceStatusBadge from '@/components/attendance/AttendanceStatusBadge';
+import DonutChart from '@/components/common/DonutChart';
 import { AVAILABILITY_STATUSES, type DepartmentAttendanceMember } from '@/types';
 
 export default function DepartmentAttendanceView({
@@ -34,6 +35,29 @@ export default function DepartmentAttendanceView({
             <p className="mt-3 text-2xl font-bold text-slate-900">{count}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="text-base font-semibold text-slate-900">Today&apos;s Attendance</h3>
+        <p className="mt-1 text-sm text-slate-500">Today&apos;s live department availability by attendance status.</p>
+        <div className="mt-5">
+          <DonutChart
+            label="Today’s attendance"
+            totalLabel="team members"
+            items={counts.map(({ status, count }) => ({
+              label: status,
+              value: count,
+              color: {
+                Present: '#10b981',
+                'Half Day': '#f59e0b',
+                'Approved Leave': '#3b82f6',
+                Absent: '#ef4444',
+                'Work on Holiday': '#8b5cf6',
+                'Not Marked': '#94a3b8',
+              }[status],
+            }))}
+          />
+        </div>
       </div>
 
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">

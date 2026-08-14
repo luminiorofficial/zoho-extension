@@ -82,6 +82,9 @@ interface PeriodProgressRow extends QueryResultRow {
   period_end: string | Date;
   total_tasks: number;
   done_tasks: number;
+  in_progress_tasks: number;
+  not_started_tasks: number;
+  on_hold_tasks: number;
   progress_percent: string;
 }
 
@@ -362,12 +365,29 @@ async function getCurrentProgress(
              + INTERVAL '15 months - 1 day')::date
          )
        ) AS value(period_type, period_start, period_end)
+     ), period_status_counts AS (
+       SELECT cp.period_type,
+              cp.period_start,
+              COUNT(tre.task_id) FILTER (WHERE tre.status = 'DONE')::integer AS done_tasks,
+              COUNT(tre.task_id) FILTER (WHERE tre.status = 'IN_PROGRESS')::integer AS in_progress_tasks,
+              COUNT(tre.task_id) FILTER (WHERE tre.status = 'NOT_STARTED')::integer AS not_started_tasks,
+              COUNT(tre.task_id) FILTER (WHERE tre.status = 'ON_HOLD')::integer AS on_hold_tasks
+         FROM current_periods cp
+         LEFT JOIN task_reporting_entries tre
+           ON tre.period_type = cp.period_type
+          AND tre.period_start = cp.period_start
+          AND ($1::uuid IS NULL OR tre.department_id = $1)
+          AND ($2::uuid IS NULL OR tre.member_id = $2)
+        GROUP BY cp.period_type, cp.period_start
      )
      SELECT cp.period_type,
             cp.period_start,
             cp.period_end,
             COALESCE(SUM(tpp.total_tasks), 0)::integer AS total_tasks,
             COALESCE(SUM(tpp.done_tasks), 0)::integer AS done_tasks,
+            COALESCE(psc.in_progress_tasks, 0)::integer AS in_progress_tasks,
+            COALESCE(psc.not_started_tasks, 0)::integer AS not_started_tasks,
+            COALESCE(psc.on_hold_tasks, 0)::integer AS on_hold_tasks,
             COALESCE(
               ROUND(
                 SUM(tpp.progress_percent * tpp.total_tasks)
@@ -377,12 +397,16 @@ async function getCurrentProgress(
               0
             ) AS progress_percent
        FROM current_periods cp
-       LEFT JOIN task_period_progress tpp
+      LEFT JOIN task_period_progress tpp
          ON tpp.period_type = cp.period_type
         AND tpp.period_start = cp.period_start
         AND ($1::uuid IS NULL OR tpp.department_id = $1)
         AND ($2::uuid IS NULL OR tpp.member_id = $2)
-      GROUP BY cp.period_type, cp.period_start, cp.period_end
+      LEFT JOIN period_status_counts psc
+        ON psc.period_type = cp.period_type
+       AND psc.period_start = cp.period_start
+      GROUP BY cp.period_type, cp.period_start, cp.period_end,
+               psc.in_progress_tasks, psc.not_started_tasks, psc.on_hold_tasks
       ORDER BY CASE cp.period_type
         WHEN 'WEEKLY' THEN 1
         WHEN 'MONTHLY' THEN 2
@@ -398,6 +422,12 @@ async function getCurrentProgress(
     periodEnd: dateString(row.period_end),
     totalTasks: Number(row.total_tasks),
     doneTasks: Number(row.done_tasks),
+    statusCounts: {
+      done: Number(row.done_tasks),
+      inProgress: Number(row.in_progress_tasks),
+      notStarted: Number(row.not_started_tasks),
+      onHold: Number(row.on_hold_tasks),
+    },
     progress: Number(row.progress_percent),
   }));
 }

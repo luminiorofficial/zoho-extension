@@ -14,6 +14,7 @@ export { default as MemberAttendancePanel } from './attendance/MemberAttendanceP
 export { default as DepartmentCard } from './departments/DepartmentCard';
 export { default as DepartmentExecution } from './departments/DepartmentExecution';
 export { default as DepartmentsClient } from './departments/DepartmentsClient';
+export { default as CurrentProgressDonut } from './departments/CurrentProgressDonut';
 export { default as ProjectPanel } from './departments/ProjectPanel';
 
 export { default as GoalCard } from './goals/GoalCard';
