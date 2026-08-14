@@ -87,13 +87,15 @@ export async function POST(request: Request) {
       `SELECT
          EXISTS (
            SELECT 1 FROM goals
-            WHERE id = $2 AND department_id = $1
+            WHERE id = $2 AND department_id = $1 AND is_active
+              AND EXISTS (SELECT 1 FROM departments WHERE id = $1 AND is_active)
          ) AS goal_exists,
          (
            SELECT COUNT(*)::integer
-             FROM department_members
-            WHERE department_id = $1
-              AND member_id = ANY($3::uuid[])
+             FROM department_members dm
+             JOIN members m ON m.id = dm.member_id AND m.is_active
+            WHERE dm.department_id = $1
+              AND dm.member_id = ANY($3::uuid[])
          ) AS member_count`,
       [payload.departmentId, payload.goalId, assignedMemberIds],
     );

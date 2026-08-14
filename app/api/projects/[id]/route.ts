@@ -131,9 +131,10 @@ export async function PATCH(
     if (membersToValidate.length) {
       const validResult = await client.query<{ count: number }>(
         `SELECT COUNT(*)::integer AS count
-           FROM department_members
-          WHERE department_id = $1
-            AND member_id = ANY($2::uuid[])`,
+           FROM department_members dm
+           JOIN members m ON m.id = dm.member_id AND m.is_active
+          WHERE dm.department_id = $1
+            AND dm.member_id = ANY($2::uuid[])`,
         [current.department_id, membersToValidate],
       );
       if (validResult.rows[0].count !== membersToValidate.length) {

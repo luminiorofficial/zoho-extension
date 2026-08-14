@@ -17,8 +17,10 @@ export { default as DepartmentsClient } from './departments/DepartmentsClient';
 export { default as ProjectPanel } from './departments/ProjectPanel';
 
 export { default as GoalCard } from './goals/GoalCard';
+export { default as DepartmentGoalsClient } from './goals/DepartmentGoalsClient';
 
 export { default as MemberWorkClient } from './members/MemberWorkClient';
+export { default as MembersClient } from './members/MembersClient';
 
 export { default as ProjectForm } from './projects/ProjectForm';
 export { default as ProjectsClient } from './projects/ProjectsClient';

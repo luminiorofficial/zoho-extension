@@ -9,6 +9,21 @@ export function isDate(value: unknown): value is string {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+export function isOptionalDate(value: unknown): value is string | null | undefined {
+  return value === null || value === undefined || value === '' || isDate(value);
+}
+
+export function textValue(value: unknown, maximumLength = Number.POSITIVE_INFINITY): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim();
+  return cleaned.length <= maximumLength ? cleaned : null;
+}
+
+export function uuidArray(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.some((item) => !isUuid(item))) return null;
+  return [...new Set(value)];
+}
+
 export function isoWeekStart(value: string): string {
   const date = new Date(`${value}T00:00:00Z`);
   const daysSinceMonday = (date.getUTCDay() + 6) % 7;

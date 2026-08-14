@@ -61,6 +61,9 @@ export async function POST(request: Request) {
     const hierarchyResult = await client.query(
       `SELECT a.goal_id, p.department_id
          FROM actions a
+         JOIN goals g
+           ON g.id = a.goal_id
+          AND g.is_active
          JOIN action_assignees aa
            ON aa.action_id = a.id
           AND aa.member_id = $3
@@ -73,7 +76,14 @@ export async function POST(request: Request) {
          JOIN project_members pm
            ON pm.project_id = p.id
           AND pm.member_id = $3
-        WHERE a.id = $1`,
+         JOIN departments d
+           ON d.id = p.department_id
+          AND d.is_active
+         JOIN members m
+           ON m.id = $3
+          AND m.is_active
+        WHERE a.id = $1
+          AND a.is_active`,
       [payload.actionId, payload.projectId, payload.memberId],
     );
 

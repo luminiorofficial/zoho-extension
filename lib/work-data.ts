@@ -427,6 +427,8 @@ export async function getMemberWorkData(memberId: string): Promise<MemberWorkDat
          JOIN goals g ON g.id = a.goal_id
          JOIN action_assignees aa ON aa.action_id = a.id
         WHERE aa.member_id = $1
+          AND a.is_active
+          AND g.is_active
         ORDER BY g.title, a.code NULLS LAST, a.title`,
       [memberId],
     ),

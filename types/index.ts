@@ -1,7 +1,9 @@
 export type ActionStatus =
   | 'Not Started'
   | 'In Progress'
-  | 'Done';
+  | 'Done'
+  | 'On Hold'
+  | 'Cancelled';
 
 export const PROJECT_STATUSES = [
   'Planned',
@@ -39,7 +41,8 @@ export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type Priority =
   | 'Low'
   | 'Medium'
-  | 'High';
+  | 'High'
+  | 'Critical';
 
 export interface Member {
   id: string;
@@ -50,6 +53,7 @@ export interface Member {
   departmentIds?: string[];
   specialization?: string;
   avatar?: string;
+  isActive?: boolean;
 }
 
 export type PeriodType =
@@ -254,6 +258,9 @@ export interface Target {
   targetValue?: number;
   targetUnit?: string;
   periodType?: string;
+  startDate?: string;
+  endDate?: string;
+  isActive?: boolean;
 }
 
 export interface Action {
@@ -273,6 +280,8 @@ export interface Action {
   dueDate?: string;
 
   priority?: Priority;
+  startDate?: string;
+  isActive?: boolean;
 }
 
 export interface Goal {
@@ -280,11 +289,22 @@ export interface Goal {
 
   departmentId: string;
 
+  ownerMemberId?: string;
+
+  code?: string;
+
   title: string;
 
   description?: string;
 
   progress: number;
+
+  status?: ActionStatus;
+
+  startDate?: string;
+  endDate?: string;
+
+  isActive?: boolean;
 
   targets?: Target[];
   actions: Action[];

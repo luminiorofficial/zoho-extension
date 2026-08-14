@@ -2,8 +2,8 @@ import { notFound } from 'next/navigation';
 
 import {
   DepartmentExecution,
+  DepartmentGoalsClient,
   DepartmentAttendanceView,
-  GoalCard,
   Layout,
   PeriodProgressCards,
   ProgressBar,
@@ -117,29 +117,20 @@ export default async function DepartmentPage({
       <div className="mt-8">
         <ProjectPanel
           departmentId={department.id}
-          goals={department.goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+          goals={department.isActive
+            ? department.goals
+                .filter((goal) => goal.isActive !== false)
+                .map((goal) => ({ id: goal.id, title: goal.title }))
+            : []}
           initialProjects={work.projects}
         />
       </div>
 
       <div className="mt-8">
-
-        <h2 className="mb-5 text-lg font-semibold text-slate-900">
-          Department Goals
-        </h2>
-
-        <div className="space-y-5">
-
-          {department.goals.map((goal) => (
-            <GoalCard
-              key={goal.id}
-              goal={goal}
-              members={members}
-            />
-          ))}
-
-        </div>
-
+        <DepartmentGoalsClient
+          department={department}
+          members={members.filter((member) => department.memberIds.includes(member.id))}
+        />
       </div>
 
       <div className="mt-8">

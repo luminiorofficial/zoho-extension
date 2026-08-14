@@ -23,19 +23,27 @@ interface MemberRow extends QueryResultRow {
   name: string;
   email: string | null;
   role_title: string | null;
+  is_active: boolean;
 }
 
 interface DepartmentMemberRow extends QueryResultRow {
   department_id: string;
   member_id: string;
+  is_department_head: boolean;
 }
 
 interface GoalRow extends QueryResultRow {
   id: string;
   department_id: string;
+  owner_member_id: string | null;
+  code: string | null;
   title: string;
   description: string | null;
   progress_percent: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
 }
 
 interface TargetRow extends QueryResultRow {
@@ -46,6 +54,9 @@ interface TargetRow extends QueryResultRow {
   target_value: string | null;
   target_unit: string | null;
   period_type: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
 }
 
 interface ActionRow extends QueryResultRow {
@@ -58,6 +69,8 @@ interface ActionRow extends QueryResultRow {
   progress_percent: string;
   priority: string | null;
   due_date: string | null;
+  start_date: string | null;
+  is_active: boolean;
 }
 
 interface ActionAssigneeRow extends QueryResultRow {
@@ -82,13 +95,16 @@ function appendToMap(map: Map<string, string[]>, key: string, value: string): vo
 function mapStatus(status: string): ActionStatus {
   if (status === 'DONE') return 'Done';
   if (status === 'IN_PROGRESS') return 'In Progress';
+  if (status === 'ON_HOLD') return 'On Hold';
+  if (status === 'CANCELLED') return 'Cancelled';
   return 'Not Started';
 }
 
 function mapPriority(priority: string | null): Priority | undefined {
   if (priority === 'LOW') return 'Low';
   if (priority === 'MEDIUM') return 'Medium';
-  if (priority === 'HIGH' || priority === 'CRITICAL') return 'High';
+  if (priority === 'HIGH') return 'High';
+  if (priority === 'CRITICAL') return 'Critical';
   return undefined;
 }
 
@@ -108,20 +124,26 @@ export async function getStructureData(): Promise<StructureData> {
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name`,
     ),
     db.query<MemberRow>(
-      `SELECT id, name, email, role_title
+      `SELECT id, name, email, role_title, is_active
          FROM members
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name`,
     ),
     db.query<DepartmentMemberRow>(
-      `SELECT department_id, member_id
+      `SELECT department_id, member_id, is_department_head
          FROM department_members
         ORDER BY created_at`,
     ),
     db.query<GoalRow>(
       `SELECT g.id,
               g.department_id,
+              g.owner_member_id,
+              g.code,
               g.title,
               g.description,
+              g.status,
+              g.start_date::text,
+              g.end_date::text,
+              g.is_active,
               COALESCE(task_progress.progress_percent, g.progress_percent) AS progress_percent
          FROM goals g
          LEFT JOIN (
@@ -140,13 +162,15 @@ export async function getStructureData(): Promise<StructureData> {
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, title`,
     ),
     db.query<TargetRow>(
-      `SELECT id, goal_id, title, target_text, target_value, target_unit, period_type
+      `SELECT id, goal_id, title, target_text, target_value, target_unit, period_type,
+              start_date::text, end_date::text, is_active
          FROM targets
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, title`,
     ),
     db.query<ActionRow>(
       `SELECT id, goal_id, code, title, description, effective_status AS status,
-              effective_progress AS progress_percent, priority, due_date
+              effective_progress AS progress_percent, priority, due_date::text,
+              start_date::text, is_active
          FROM (
            SELECT a.*,
                   COALESCE(atp.progress_percent, a.progress_percent) AS effective_progress,
@@ -184,6 +208,7 @@ export async function getStructureData(): Promise<StructureData> {
       role: member.role_title ?? '—',
       departmentId: departmentIds[0] ?? '',
       departmentIds,
+      isActive: member.is_active,
     };
   });
 
@@ -223,6 +248,9 @@ export async function getStructureData(): Promise<StructureData> {
         targetValue: target.target_value === null ? undefined : Number(target.target_value),
         targetUnit: target.target_unit ?? undefined,
         periodType: target.period_type ?? undefined,
+        startDate: target.start_date ?? undefined,
+        endDate: target.end_date ?? undefined,
+        isActive: target.is_active,
       }));
 
       const actions: Action[] = (actionRowsByGoal.get(goal.id) ?? []).map((action) => ({
@@ -236,14 +264,22 @@ export async function getStructureData(): Promise<StructureData> {
         progress: Number(action.progress_percent),
         dueDate: action.due_date ?? undefined,
         priority: mapPriority(action.priority),
+        startDate: action.start_date ?? undefined,
+        isActive: action.is_active,
       }));
 
       return {
         id: goal.id,
         departmentId: goal.department_id,
+        ownerMemberId: goal.owner_member_id ?? undefined,
+        code: goal.code ?? undefined,
         title: goal.title,
         description: goal.description ?? undefined,
         progress: Number(goal.progress_percent),
+        status: mapStatus(goal.status),
+        startDate: goal.start_date ?? undefined,
+        endDate: goal.end_date ?? undefined,
+        isActive: goal.is_active,
         targets,
         actions,
       };
@@ -258,6 +294,9 @@ export async function getStructureData(): Promise<StructureData> {
       name: department.name,
       description: department.description ?? undefined,
       memberIds: memberIdsByDepartment.get(department.id) ?? [],
+      headId: departmentMemberResult.rows.find(
+        (membership) => membership.department_id === department.id && membership.is_department_head,
+      )?.member_id,
       progress,
       isActive: department.is_active,
       goals,

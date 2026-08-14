@@ -64,6 +64,7 @@ async function run(): Promise<void> {
       '003_financial_year_progress.sql',
       '004_project_management_closure.sql',
       '005_attendance_leave.sql',
+      '006_structure_crud.sql',
     ]) {
       await client.query(fs.readFileSync(path.join(process.cwd(), 'database', migration), 'utf8'));
     }
@@ -161,6 +162,25 @@ async function run(): Promise<void> {
     const action = await client.query<{ id: string }>(
       `INSERT INTO actions (goal_id, title) VALUES ($1, 'Project Test Action') RETURNING id`,
       [goal.rows[0].id],
+    );
+    const target = await client.query<{ id: string }>(
+      `INSERT INTO targets (goal_id, title, target_value, target_unit)
+       VALUES ($1, 'Project Test Target', 10, 'items') RETURNING id`,
+      [goal.rows[0].id],
+    );
+    const crudFlags = await client.query<{ goal_active: boolean; target_active: boolean; action_active: boolean }>(
+      `SELECT g.is_active AS goal_active,
+              t.is_active AS target_active,
+              a.is_active AS action_active
+         FROM goals g
+         JOIN targets t ON t.goal_id = g.id
+         JOIN actions a ON a.goal_id = g.id
+        WHERE g.id = $1 AND t.id = $2 AND a.id = $3`,
+      [goal.rows[0].id, target.rows[0].id, action.rows[0].id],
+    );
+    assert(
+      crudFlags.rows[0].goal_active && crudFlags.rows[0].target_active && crudFlags.rows[0].action_active,
+      'Imported and newly-created structure rows must remain active by default.',
     );
     await client.query(
       `INSERT INTO action_assignees (action_id, member_id) VALUES ($1, $2)`,
@@ -351,7 +371,33 @@ async function run(): Promise<void> {
       [closureItem.rows[0].id],
     );
 
-    console.log('Database tests passed: migrations, attendance history, leave sync, hierarchy, progress, workload, capacity, and closure rules.');
+    await client.query(`UPDATE targets SET is_active = FALSE WHERE id = $1`, [target.rows[0].id]);
+    await client.query(`UPDATE actions SET is_active = FALSE WHERE id = $1`, [action.rows[0].id]);
+    await client.query(`UPDATE goals SET is_active = FALSE WHERE id = $1`, [goal.rows[0].id]);
+    await client.query(`UPDATE members SET is_active = FALSE WHERE id = $1`, [memberId]);
+    await client.query(`UPDATE departments SET is_active = FALSE WHERE id = $1`, [departmentId]);
+    const retainedAfterDeactivation = await client.query<{
+      targets: number;
+      actions: number;
+      goals: number;
+      tasks: number;
+      memberships: number;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::integer FROM targets WHERE id = $1) AS targets,
+         (SELECT COUNT(*)::integer FROM actions WHERE id = $2) AS actions,
+         (SELECT COUNT(*)::integer FROM goals WHERE id = $3) AS goals,
+         (SELECT COUNT(*)::integer FROM tasks WHERE action_id = $2) AS tasks,
+         (SELECT COUNT(*)::integer FROM department_members
+           WHERE department_id = $4 AND member_id = $5) AS memberships`,
+      [target.rows[0].id, action.rows[0].id, goal.rows[0].id, departmentId, memberId],
+    );
+    assert(
+      Object.values(retainedAfterDeactivation.rows[0]).every((count) => count > 0),
+      'Structure deactivation must retain goals, targets, actions, tasks, and memberships.',
+    );
+
+    console.log('Database tests passed: migrations, CRUD retention, attendance history, leave sync, hierarchy, progress, workload, capacity, and closure rules.');
   } finally {
     await client.query('ROLLBACK');
     client.release();

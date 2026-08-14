@@ -15,15 +15,17 @@ export default async function ProjectsPage({ searchParams }: PageProps<'/project
     getMemberWorkloads(),
   ]);
   const workloadsByMember = new Map(workloads.map((workload) => [workload.memberId, workload]));
-  const departments = structure.departments.map((department) => ({
+  const departments = structure.departments.filter((department) => department.isActive).map((department) => ({
     id: department.id,
     name: department.name,
-    goals: department.goals.map((goal) => ({ id: goal.id, title: goal.title })),
+    goals: department.goals
+      .filter((goal) => goal.isActive !== false)
+      .map((goal) => ({ id: goal.id, title: goal.title })),
     members: department.memberIds.flatMap((id) => {
       const workload = workloadsByMember.get(id);
       return workload ? [workload] : [];
     }),
   }));
 
-  return <Layout><ProjectsClient projects={projects} departments={departments} members={structure.members.map(({ id, name }) => ({ id, name }))} initialDepartmentId={initialDepartmentId} openCreateInitially={query.new === '1'} /></Layout>;
+  return <Layout><ProjectsClient projects={projects} departments={departments} members={structure.members.filter((member) => member.isActive !== false).map(({ id, name }) => ({ id, name }))} initialDepartmentId={initialDepartmentId} openCreateInitially={query.new === '1'} /></Layout>;
 }
