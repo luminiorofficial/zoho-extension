@@ -74,7 +74,7 @@ export async function PATCH(request: Request, context: RouteContext<'/api/target
   }
   if ('targetValue' in payload) {
     const value = optionalNumber(payload.targetValue);
-    if (value === undefined) return Response.json({ error: 'Target value must be numeric.' }, { status: 400 });
+    if (value === undefined || (value !== null && value <= 0)) return Response.json({ error: 'Target value must be greater than zero.' }, { status: 400 });
     add('target_value', value);
   }
   if ('targetUnit' in payload) {

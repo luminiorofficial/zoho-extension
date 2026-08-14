@@ -28,6 +28,7 @@ interface DepartmentRecord {
   key: string;
   name: string;
   sourceRow: number;
+  sourceCell: string;
 }
 
 interface MemberRecord {
@@ -35,6 +36,7 @@ interface MemberRecord {
   departmentKey: string;
   name: string;
   sourceRow: number;
+  sourceCell: string;
 }
 
 interface GoalRecord {
@@ -45,6 +47,7 @@ interface GoalRecord {
   title: string;
   description: string | null;
   sourceRow: number;
+  sourceCell: string;
 }
 
 interface TargetRecord {
@@ -53,6 +56,7 @@ interface TargetRecord {
   title: string;
   targetText: string;
   sourceRow: number;
+  sourceCell: string;
 }
 
 interface ActionRecord {
@@ -63,11 +67,12 @@ interface ActionRecord {
   title: string;
   description: string | null;
   sourceRow: number;
+  sourceCell: string;
 }
 
 interface DailyUpdateRecord {
   departmentKey: string;
-  memberKey: string;
+  memberKey: string | null;
   goalKey: string | null;
   targetKey: string | null;
   actionKey: string | null;
@@ -126,6 +131,13 @@ function getCellText(cell: ExcelJS.Cell): string {
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function sourceCellReference(...cells: ExcelJS.Cell[]): string {
+  const populated = cells.filter((cell) => getCellText(cell));
+  if (populated.length === 0) return cells[0]?.address ?? "";
+  if (populated.length === 1) return populated[0].address;
+  return `${populated[0].address}:${populated[populated.length - 1].address}`;
 }
 
 function formatDate(value: Date): string {
@@ -212,6 +224,18 @@ function parseActionCode(columnA: string, columnB: string): ParsedActionCode | n
     return {
       code: normalizeActionCode(leadingCode[1]),
       titleFromCodeCell: compactText(leadingCode[2] ?? ""),
+      codeSource: "A",
+    };
+  }
+
+  const uppercaseUnseparatedCode = columnA.match(
+    /^\s*((?:[A-Z]\s*\d+\s*-\s*[A-Z])|(?:[A-Z]\s*\d+))\s+([A-Z]+(?:\s+[A-Z]+)+)\s*$/,
+  );
+
+  if (uppercaseUnseparatedCode) {
+    return {
+      code: normalizeActionCode(uppercaseUnseparatedCode[1]),
+      titleFromCodeCell: compactText(uppercaseUnseparatedCode[2]),
       codeSource: "A",
     };
   }
@@ -354,7 +378,21 @@ function classifyDailyEntry(
     "NOT STARTED": "NOT_STARTED",
     "ON HOLD": "ON_HOLD",
   };
-  const status = statusMap[normalizedStatus] ?? null;
+  let status = statusMap[normalizedStatus] ?? null;
+  const combinedStatuses = normalizedStatus
+    .split(/\s*,\s*/)
+    .map((value) => statusMap[value])
+    .filter((value): value is DailyStatus => Boolean(value));
+
+  if (
+    !status &&
+    combinedStatuses.length > 1 &&
+    combinedStatuses.length === normalizedStatus.split(",").length
+  ) {
+    status = combinedStatuses.every((value) => value === combinedStatuses[0])
+      ? combinedStatuses[0]
+      : "IN_PROGRESS";
+  }
 
   return {
     activity: activity || null,
@@ -391,12 +429,14 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
     const columnA = compactText(getCellText(row.getCell(1)));
     const columnB = compactText(getCellText(row.getCell(2)));
     const columnC = compactText(getCellText(row.getCell(3)));
+    const parsedAction = currentMember && currentGoal ? parseActionCode(columnA, columnB) : null;
 
     if (isDepartmentRow(worksheet.name.trim(), columnA, columnB)) {
       currentDepartment = {
         key: `department:${rowNumber}`,
         name: columnA.replace(/^\d+\.\s*/, ""),
         sourceRow: rowNumber,
+        sourceCell: row.getCell(1).address,
       };
       departments.push(currentDepartment);
       currentMember = null;
@@ -404,19 +444,15 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
       currentGoalTarget = null;
       currentTarget = null;
       currentAction = null;
+    } else if (!currentDepartment) {
       continue;
-    }
-
-    if (!currentDepartment) continue;
-
-    const parsedAction = currentMember && currentGoal ? parseActionCode(columnA, columnB) : null;
-
-    if (isMemberRow(worksheet, row, columnA)) {
+    } else if (isMemberRow(worksheet, row, columnA)) {
       currentMember = {
         key: `member:${rowNumber}`,
         departmentKey: currentDepartment.key,
         name: columnA,
         sourceRow: rowNumber,
+        sourceCell: row.getCell(1).address,
       };
       members.push(currentMember);
       currentGoal = null;
@@ -438,6 +474,11 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
         description:
           parsedAction.codeSource === "A" && columnB && columnB !== actionTitle ? columnB : null,
         sourceRow: rowNumber,
+        sourceCell: sourceCellReference(
+          ...(parsedAction.codeSource === "A"
+            ? [row.getCell(1), row.getCell(2)]
+            : [row.getCell(2)]),
+        ),
       };
       actions.push(currentAction);
       currentTarget = currentGoalTarget;
@@ -449,6 +490,7 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
           title: columnC,
           targetText: columnC,
           sourceRow: rowNumber,
+          sourceCell: row.getCell(3).address,
         };
         targets.push(currentTarget);
       }
@@ -462,6 +504,7 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
         title: goalTitle,
         description: columnB && columnB !== goalTitle ? columnB : null,
         sourceRow: rowNumber,
+        sourceCell: sourceCellReference(row.getCell(1), row.getCell(2)),
       };
       goals.push(currentGoal);
       currentAction = null;
@@ -474,14 +517,13 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
             title: columnC || columnB,
             targetText,
             sourceRow: rowNumber,
+            sourceCell: sourceCellReference(row.getCell(2), row.getCell(3)),
           }
         : null;
       currentTarget = currentGoalTarget;
 
       if (currentTarget) targets.push(currentTarget);
     }
-
-    if (!currentMember) continue;
 
     for (const dailyColumn of dailyColumns) {
       const activityCell = row.getCell(dailyColumn.activityColumn);
@@ -494,7 +536,7 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
       const classified = classifyDailyEntry(activityText, statusText);
       dailyUpdates.push({
         departmentKey: currentDepartment.key,
-        memberKey: currentMember.key,
+        memberKey: currentMember?.key ?? null,
         goalKey: currentGoal?.key ?? null,
         targetKey: currentTarget?.key ?? null,
         actionKey: currentAction?.key ?? null,
@@ -504,7 +546,7 @@ export function parseSheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
         entryType: classified.entryType,
         note: classified.note,
         sourceRow: rowNumber,
-        sourceCell: activityText ? activityCell.address : statusCell.address,
+        sourceCell: sourceCellReference(activityCell, statusCell),
       });
     }
   }
@@ -527,16 +569,29 @@ async function getOrInsertDepartment(
   sheet: string,
 ): Promise<string> {
   const existing = await client.query(
-    `SELECT id FROM departments WHERE name = $1 AND source_sheet = $2 ORDER BY created_at LIMIT 1`,
-    [record.name, sheet],
+    `SELECT id
+       FROM departments
+      WHERE source_sheet = $1
+        AND (source_row = $2 OR name = $3)
+      ORDER BY (source_row = $2) DESC, created_at
+      LIMIT 1`,
+    [sheet, record.sourceRow, record.name],
   );
-  if (existing.rows[0]) return existing.rows[0].id;
+  if (existing.rows[0]) {
+    await client.query(
+      `UPDATE departments
+          SET name = $2, source_sheet = $3, source_row = $4, source_cell = $5
+        WHERE id = $1`,
+      [existing.rows[0].id, record.name, sheet, record.sourceRow, record.sourceCell],
+    );
+    return existing.rows[0].id;
+  }
 
   const inserted = await client.query(
-    `INSERT INTO departments (name, is_active, source_sheet, source_row)
-     VALUES ($1, true, $2, $3)
+    `INSERT INTO departments (name, is_active, source_sheet, source_row, source_cell)
+     VALUES ($1, true, $2, $3, $4)
      RETURNING id`,
-    [record.name, sheet, record.sourceRow],
+    [record.name, sheet, record.sourceRow, record.sourceCell],
   );
   return inserted.rows[0].id;
 }
@@ -547,16 +602,29 @@ async function getOrInsertMember(
   sheet: string,
 ): Promise<string> {
   const existing = await client.query(
-    `SELECT id FROM members WHERE name = $1 AND source_sheet = $2 ORDER BY created_at LIMIT 1`,
-    [record.name, sheet],
+    `SELECT id
+       FROM members
+      WHERE source_sheet = $1
+        AND (source_row = $2 OR name = $3)
+      ORDER BY (source_row = $2) DESC, created_at
+      LIMIT 1`,
+    [sheet, record.sourceRow, record.name],
   );
-  if (existing.rows[0]) return existing.rows[0].id;
+  if (existing.rows[0]) {
+    await client.query(
+      `UPDATE members
+          SET name = $2, source_sheet = $3, source_row = $4, source_cell = $5
+        WHERE id = $1`,
+      [existing.rows[0].id, record.name, sheet, record.sourceRow, record.sourceCell],
+    );
+    return existing.rows[0].id;
+  }
 
   const inserted = await client.query(
-    `INSERT INTO members (name, role_title, is_active, source_sheet, source_row)
-     VALUES ($1, NULL, true, $2, $3)
+    `INSERT INTO members (name, role_title, is_active, source_sheet, source_row, source_cell)
+     VALUES ($1, NULL, true, $2, $3, $4)
      RETURNING id`,
-    [record.name, sheet, record.sourceRow],
+    [record.name, sheet, record.sourceRow, record.sourceCell],
   );
   return inserted.rows[0].id;
 }
@@ -591,6 +659,7 @@ async function getOrInsertGoal(
               description = $5,
               source_sheet = $6,
               source_row = $7,
+              source_cell = $8,
               updated_at = NOW()
         WHERE id = $1`,
       [
@@ -601,6 +670,7 @@ async function getOrInsertGoal(
         record.description,
         sheet,
         record.sourceRow,
+        record.sourceCell,
       ],
     );
     return existing.rows[0].id;
@@ -609,8 +679,8 @@ async function getOrInsertGoal(
   const inserted = await client.query(
     `INSERT INTO goals (
        department_id, owner_member_id, code, title, description,
-       status, progress_percent, source_sheet, source_row
-     ) VALUES ($1, $2, $3, $4, $5, 'NOT_STARTED', 0, $6, $7)
+       status, progress_percent, source_sheet, source_row, source_cell
+     ) VALUES ($1, $2, $3, $4, $5, 'NOT_STARTED', 0, $6, $7, $8)
      RETURNING id`,
     [
       departmentId,
@@ -620,6 +690,7 @@ async function getOrInsertGoal(
       record.description,
       sheet,
       record.sourceRow,
+      record.sourceCell,
     ],
   );
   return inserted.rows[0].id;
@@ -649,18 +720,26 @@ async function getOrInsertTarget(
               target_text = $3,
               source_sheet = $4,
               source_row = $5,
+              source_cell = $6,
               updated_at = NOW()
         WHERE id = $1`,
-      [existing.rows[0].id, record.title, record.targetText, sheet, record.sourceRow],
+      [
+        existing.rows[0].id,
+        record.title,
+        record.targetText,
+        sheet,
+        record.sourceRow,
+        record.sourceCell,
+      ],
     );
     return existing.rows[0].id;
   }
 
   const inserted = await client.query(
-    `INSERT INTO targets (goal_id, title, target_text, source_sheet, source_row)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO targets (goal_id, title, target_text, source_sheet, source_row, source_cell)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id`,
-    [goalId, record.title, record.targetText, sheet, record.sourceRow],
+    [goalId, record.title, record.targetText, sheet, record.sourceRow, record.sourceCell],
   );
   return inserted.rows[0].id;
 }
@@ -690,6 +769,7 @@ async function getOrInsertAction(
               description = $4,
               source_sheet = $5,
               source_row = $6,
+              source_cell = $7,
               updated_at = NOW()
         WHERE id = $1`,
       [
@@ -699,6 +779,7 @@ async function getOrInsertAction(
         record.description,
         sheet,
         record.sourceRow,
+        record.sourceCell,
       ],
     );
     return existing.rows[0].id;
@@ -706,87 +787,96 @@ async function getOrInsertAction(
 
   const inserted = await client.query(
     `INSERT INTO actions (
-       goal_id, code, title, description, status, progress_percent, source_sheet, source_row
-     ) VALUES ($1, $2, $3, $4, 'NOT_STARTED', 0, $5, $6)
+       goal_id, code, title, description, status, progress_percent,
+       source_sheet, source_row, source_cell
+     ) VALUES ($1, $2, $3, $4, 'NOT_STARTED', 0, $5, $6, $7)
      RETURNING id`,
-    [goalId, record.code, record.title, record.description, sheet, record.sourceRow],
+    [
+      goalId,
+      record.code,
+      record.title,
+      record.description,
+      sheet,
+      record.sourceRow,
+      record.sourceCell,
+    ],
   );
   return inserted.rows[0].id;
 }
 
-async function upsertDailyUpdate(
+interface ResolvedDailyUpdate {
+  record: DailyUpdateRecord;
+  departmentId: string;
+  memberId: string | null;
+  goalId: string | null;
+  targetId: string | null;
+  actionId: string | null;
+}
+
+async function upsertDailyUpdates(
   client: PoolClient,
-  record: DailyUpdateRecord,
-  ids: {
-    departmentId: string;
-    memberId: string;
-    goalId: string | null;
-    targetId: string | null;
-    actionId: string | null;
-  },
+  updates: ResolvedDailyUpdate[],
   sheet: string,
 ): Promise<void> {
-  const existing = await client.query(
-    `SELECT id
-       FROM daily_updates
-      WHERE source_sheet = $1
-        AND source_row = $2
-        AND update_date = $3
-        AND member_id = $4
-        AND goal_id IS NOT DISTINCT FROM $5
-        AND action_id IS NOT DISTINCT FROM $6
-      ORDER BY created_at
-      LIMIT 1`,
-    [sheet, record.sourceRow, record.updateDate, ids.memberId, ids.goalId, ids.actionId],
-  );
+  const chunkSize = 1_000;
+  for (let offset = 0; offset < updates.length; offset += chunkSize) {
+    const values = updates.slice(offset, offset + chunkSize).map((update) => ({
+      department_id: update.departmentId,
+      member_id: update.memberId,
+      goal_id: update.goalId,
+      action_id: update.actionId,
+      target_id: update.targetId,
+      update_date: update.record.updateDate,
+      activity: update.record.activity,
+      status: update.record.status,
+      entry_type: update.record.entryType,
+      note: update.record.note,
+      source_sheet: sheet,
+      source_row: update.record.sourceRow,
+      source_cell: update.record.sourceCell,
+    }));
 
-  const values = [
-    ids.departmentId,
-    ids.memberId,
-    ids.goalId,
-    ids.actionId,
-    ids.targetId,
-    record.updateDate,
-    record.activity,
-    record.status,
-    record.entryType,
-    record.note,
-    sheet,
-    record.sourceRow,
-    record.sourceCell,
-  ];
-
-  if (existing.rows[0]) {
     await client.query(
-      `UPDATE daily_updates
-          SET department_id = $1,
-              member_id = $2,
-              goal_id = $3,
-              action_id = $4,
-              target_id = $5,
-              update_date = $6,
-              activity = $7,
-              status = $8,
-              entry_type = $9,
-              note = $10,
-              source_sheet = $11,
-              source_row = $12,
-              source_cell = $13,
-              updated_at = NOW()
-        WHERE id = $14`,
-      [...values, existing.rows[0].id],
+      `INSERT INTO daily_updates (
+         department_id, member_id, goal_id, action_id, target_id,
+         update_date, activity, status, entry_type, note,
+         source_sheet, source_row, source_cell
+       )
+       SELECT department_id, member_id, goal_id, action_id, target_id,
+              update_date, activity, status, entry_type, note,
+              source_sheet, source_row, source_cell
+         FROM jsonb_to_recordset($1::jsonb) AS imported(
+           department_id UUID,
+           member_id UUID,
+           goal_id UUID,
+           action_id UUID,
+           target_id UUID,
+           update_date DATE,
+           activity TEXT,
+           status VARCHAR(30),
+           entry_type VARCHAR(30),
+           note TEXT,
+           source_sheet VARCHAR(100),
+           source_row INTEGER,
+           source_cell VARCHAR(30)
+         )
+       ON CONFLICT (source_sheet, source_row, update_date)
+         WHERE source_sheet IN ('Management', 'Operation') AND source_row IS NOT NULL
+       DO UPDATE SET
+         department_id = EXCLUDED.department_id,
+         member_id = EXCLUDED.member_id,
+         goal_id = EXCLUDED.goal_id,
+         action_id = EXCLUDED.action_id,
+         target_id = EXCLUDED.target_id,
+         activity = EXCLUDED.activity,
+         status = EXCLUDED.status,
+         entry_type = EXCLUDED.entry_type,
+         note = EXCLUDED.note,
+         source_cell = EXCLUDED.source_cell,
+         updated_at = NOW()`,
+      [JSON.stringify(values)],
     );
-    return;
   }
-
-  await client.query(
-    `INSERT INTO daily_updates (
-       department_id, member_id, goal_id, action_id, target_id,
-       update_date, activity, status, entry_type, note,
-       source_sheet, source_row, source_cell
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    values,
-  );
 }
 
 function errorMessage(error: unknown): string {
@@ -968,26 +1058,24 @@ async function importStopData(dryRun = false, structureOnly = false): Promise<vo
       }
 
       if (!structureOnly) {
+        const resolvedUpdates: ResolvedDailyUpdate[] = [];
         for (const update of parsed.dailyUpdates) {
           const departmentId = departmentIds.get(update.departmentKey);
-          const memberId = memberIds.get(update.memberKey);
-          if (!departmentId || !memberId) {
-            throw new Error(`Missing daily update owner for ${sheet} row ${update.sourceRow}`);
+          const memberId = update.memberKey ? memberIds.get(update.memberKey) : null;
+          if (!departmentId || (update.memberKey && !memberId)) {
+            throw new Error(`Missing daily update scope for ${sheet} row ${update.sourceRow}`);
           }
 
-          await upsertDailyUpdate(
-            client,
-            update,
-            {
-              departmentId,
-              memberId,
-              goalId: update.goalKey ? (goalIds.get(update.goalKey) ?? null) : null,
-              targetId: update.targetKey ? (targetIds.get(update.targetKey) ?? null) : null,
-              actionId: update.actionKey ? (actionIds.get(update.actionKey) ?? null) : null,
-            },
-            sheet,
-          );
+          resolvedUpdates.push({
+            record: update,
+            departmentId,
+            memberId: memberId ?? null,
+            goalId: update.goalKey ? (goalIds.get(update.goalKey) ?? null) : null,
+            targetId: update.targetKey ? (targetIds.get(update.targetKey) ?? null) : null,
+            actionId: update.actionKey ? (actionIds.get(update.actionKey) ?? null) : null,
+          });
         }
+        await upsertDailyUpdates(client, resolvedUpdates, sheet);
       }
     }
 

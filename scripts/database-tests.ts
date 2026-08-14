@@ -5,6 +5,8 @@ import { Pool, type PoolClient } from 'pg';
 
 import { getCapacityStatus } from '../lib/capacity';
 import { isBusinessDayInWeek, isoWeekStart, textValue } from '../lib/planner-validation';
+import { reportingPeriod } from '../lib/reporting-periods';
+import { nonNegativeNumber, optionalScore } from '../lib/reporting-validation';
 import { MEMBER_WORKLOAD_QUERY } from '../lib/workload-query';
 
 function loadLocalEnvironment(): void {
@@ -50,6 +52,12 @@ async function run(): Promise<void> {
   assert(isBusinessDayInWeek('2026-08-14', '2026-08-10'), 'Friday must be a valid work-plan day.');
   assert(!isBusinessDayInWeek('2026-08-15', '2026-08-10'), 'Saturday must not be a work-plan day.');
   assert(textValue('x'.repeat(501), 500) === null, 'Planning titles over 500 characters must be rejected.');
+  assert(reportingPeriod('QUARTERLY', '2026-02-10')?.start === '2026-01-01', 'Financial Q4 must start in January.');
+  assert(reportingPeriod('YEARLY', '2026-02-10')?.start === '2025-04-01', 'Financial year must run from April to March.');
+  assert(reportingPeriod('YEARLY', '2026-04-01')?.end === '2027-03-31', 'April must start a new financial year.');
+  assert(nonNegativeNumber('-1') === undefined, 'Negative KPI achievement must fail API validation.');
+  assert(nonNegativeNumber('') === undefined, 'Blank KPI achievement must fail API validation.');
+  assert(optionalScore('100.01') === undefined, 'Evaluation score over 100 must fail API validation.');
 
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -62,7 +70,7 @@ async function run(): Promise<void> {
   try {
     await client.query('BEGIN');
     await client.query(`CREATE SCHEMA ${schema}`);
-    await client.query(`SET LOCAL search_path TO ${schema}, public`);
+    await client.query(`SET LOCAL search_path TO ${schema}`);
 
     for (const migration of [
       '001_init.sql',
@@ -72,6 +80,8 @@ async function run(): Promise<void> {
       '005_attendance_leave.sql',
       '006_structure_crud.sql',
       '007_employee_workflow.sql',
+      '008_kpi_evaluations.sql',
+      '009_excel_migration_provenance.sql',
     ]) {
       await client.query(fs.readFileSync(path.join(process.cwd(), 'database', migration), 'utf8'));
     }
@@ -171,9 +181,139 @@ async function run(): Promise<void> {
       [goal.rows[0].id],
     );
     const target = await client.query<{ id: string }>(
-      `INSERT INTO targets (goal_id, title, target_value, target_unit)
-       VALUES ($1, 'Project Test Target', 10, 'items') RETURNING id`,
+      `INSERT INTO targets (goal_id, title, target_value, target_unit, period_type)
+       VALUES ($1, 'Project Test Target', 10, 'items', 'MONTHLY') RETURNING id`,
       [goal.rows[0].id],
+    );
+
+    await client.query(
+      `INSERT INTO target_measurements (
+         target_id, member_id, period_type, period_start, period_end, achieved_value, note
+       ) VALUES ($1, $2, 'MONTHLY', '2026-08-01', '2026-08-31', 7.5, 'First measurement')`,
+      [target.rows[0].id, memberId],
+    );
+    const measurementProgress = await client.query<{ progress_percent: string }>(
+      `SELECT progress_percent
+         FROM target_measurement_progress
+        WHERE target_id = $1 AND member_id = $2`,
+      [target.rows[0].id, memberId],
+    );
+    assert(Number(measurementProgress.rows[0].progress_percent) === 75, 'KPI progress must calculate achieved divided by target.');
+    await client.query(
+      `INSERT INTO target_measurements (
+         target_id, member_id, period_type, period_start, period_end, achieved_value, note
+       ) VALUES ($1, $2, 'MONTHLY', '2026-08-01', '2026-08-31', 8, 'Updated measurement')
+       ON CONFLICT (
+         target_id,
+         (COALESCE(member_id, '00000000-0000-0000-0000-000000000000'::uuid)),
+         period_type,
+         period_start,
+         period_end
+       ) DO UPDATE SET achieved_value = EXCLUDED.achieved_value, note = EXCLUDED.note`,
+      [target.rows[0].id, memberId],
+    );
+    const updatedMeasurement = await client.query<{ count: number; achieved_value: string }>(
+      `SELECT COUNT(*)::integer AS count, MAX(achieved_value) AS achieved_value
+         FROM target_measurements
+        WHERE target_id = $1 AND member_id = $2 AND period_start = '2026-08-01'`,
+      [target.rows[0].id, memberId],
+    );
+    assert(updatedMeasurement.rows[0].count === 1, 'KPI API upsert must not duplicate an existing member period.');
+    assert(Number(updatedMeasurement.rows[0].achieved_value) === 8, 'KPI API upsert must update the achieved value.');
+
+    await client.query(
+      `INSERT INTO target_measurements (
+         target_id, member_id, period_type, period_start, period_end, achieved_value
+       ) VALUES ($1, $2, 'MONTHLY', '2026-08-01', '2026-08-31', 12)`,
+      [target.rows[0].id, ownerId],
+    );
+    const measurementScopes = await client.query<{ count: number }>(
+      `SELECT COUNT(*)::integer AS count
+         FROM target_measurements
+        WHERE target_id = $1 AND period_start = '2026-08-01'`,
+      [target.rows[0].id],
+    );
+    assert(measurementScopes.rows[0].count === 2, 'The same KPI period must support separate member achievements.');
+
+    await expectConstraintFailure(
+      client,
+      'negative_kpi_achievement',
+      `INSERT INTO target_measurements (
+         target_id, member_id, period_type, period_start, period_end, achieved_value
+       ) VALUES ($1, NULL, 'MONTHLY', '2026-08-01', '2026-08-31', -1)`,
+      [target.rows[0].id],
+    );
+    await expectConstraintFailure(
+      client,
+      'invalid_month_bounds',
+      `INSERT INTO target_measurements (
+         target_id, member_id, period_type, period_start, period_end, achieved_value
+       ) VALUES ($1, NULL, 'MONTHLY', '2026-08-02', '2026-08-31', 1)`,
+      [target.rows[0].id],
+    );
+
+    await client.query(
+      `INSERT INTO period_reviews (
+         department_id, member_id, goal_id, period_type, period_start, period_end,
+         score, summary, achievements, challenges, next_steps, source_sheet, source_row
+       ) VALUES (
+         $1, $2, $3, 'MONTHLY', '2026-08-01', '2026-08-31',
+         80, 'Imported summary', 'Imported achievement', 'Imported challenge',
+         'Imported next step', 'Historical Review', 12
+       ), (
+         $1, $2, $3, 'MONTHLY', '2026-08-01', '2026-08-31',
+         85, 'Management summary', 'Management achievement', 'Management challenge',
+         'Management next step', NULL, NULL
+       )`,
+      [departmentId, memberId, goal.rows[0].id],
+    );
+    const reviewVersions = await client.query<{ total: number; imported: number; complete: number }>(
+      `SELECT COUNT(*)::integer AS total,
+              COUNT(*) FILTER (WHERE source_sheet IS NOT NULL)::integer AS imported,
+              COUNT(*) FILTER (
+                WHERE score IS NOT NULL AND summary IS NOT NULL AND achievements IS NOT NULL
+                  AND challenges IS NOT NULL AND next_steps IS NOT NULL
+              )::integer AS complete
+         FROM period_reviews
+        WHERE department_id = $1 AND member_id = $2 AND goal_id = $3`,
+      [departmentId, memberId, goal.rows[0].id],
+    );
+    assert(reviewVersions.rows[0].total === 2, 'Manual evaluations must coexist with imported historical reviews.');
+    assert(reviewVersions.rows[0].imported === 1, 'Imported evaluation source metadata must be retained.');
+    assert(reviewVersions.rows[0].complete === 2, 'All evaluation fields must persist in PostgreSQL.');
+    await client.query(
+      `WITH existing AS (
+         SELECT id FROM period_reviews
+          WHERE department_id = $1 AND member_id IS NOT DISTINCT FROM $2::uuid
+            AND goal_id IS NOT DISTINCT FROM $3::uuid AND period_type = 'MONTHLY'
+            AND period_start = '2026-08-01' AND period_end = '2026-08-31'
+            AND source_sheet IS NULL
+          ORDER BY updated_at DESC LIMIT 1
+       )
+       UPDATE period_reviews pr
+          SET score = 90, summary = 'Updated management summary'
+         FROM existing
+        WHERE pr.id = existing.id`,
+      [departmentId, memberId, goal.rows[0].id],
+    );
+    const preservedReview = await client.query<{ total: number; imported_summary: string; manual_score: string }>(
+      `SELECT COUNT(*)::integer AS total,
+              MAX(summary) FILTER (WHERE source_sheet IS NOT NULL) AS imported_summary,
+              MAX(score) FILTER (WHERE source_sheet IS NULL) AS manual_score
+         FROM period_reviews
+        WHERE department_id = $1 AND member_id = $2 AND goal_id = $3`,
+      [departmentId, memberId, goal.rows[0].id],
+    );
+    assert(preservedReview.rows[0].total === 2, 'Evaluation upsert must not create another review version.');
+    assert(preservedReview.rows[0].imported_summary === 'Imported summary', 'Evaluation upsert must not alter imported history.');
+    assert(Number(preservedReview.rows[0].manual_score) === 90, 'Evaluation upsert must update only the manual review.');
+    await expectConstraintFailure(
+      client,
+      'invalid_review_score',
+      `INSERT INTO period_reviews (
+         department_id, period_type, period_start, period_end, score
+       ) VALUES ($1, 'MONTHLY', '2026-08-01', '2026-08-31', 101)`,
+      [departmentId],
     );
     const crudFlags = await client.query<{ goal_active: boolean; target_active: boolean; action_active: boolean }>(
       `SELECT g.is_active AS goal_active,
@@ -480,7 +620,7 @@ async function run(): Promise<void> {
       'Structure deactivation must retain goals, targets, actions, tasks, and memberships.',
     );
 
-    console.log('Database tests passed: migrations, validation, CRUD retention, read-only history, leave sync, active hierarchy, Monday–Friday tasks, carry-forward, progress, workload, capacity, and closure rules.');
+    console.log('Database tests passed: migrations, API validation, KPI measurement progress, evaluation history, canonical financial periods, CRUD retention, read-only history, leave sync, active hierarchy, Monday–Friday tasks, carry-forward, task progress, workload, capacity, and closure rules.');
   } finally {
     await client.query('ROLLBACK');
     client.release();

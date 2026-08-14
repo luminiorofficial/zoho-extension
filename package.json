@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "db:test": "tsx scripts/database-tests.ts"
+    "db:test": "tsx scripts/database-tests.ts",
+    "migration:test": "tsx --test scripts/import-stop-data.test.ts",
+    "migration:validate": "tsx scripts/validate-stop-migration.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

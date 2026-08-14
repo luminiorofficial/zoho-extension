@@ -28,3 +28,5 @@ export { default as ProjectDetailClient } from './projects/ProjectDetailClient';
 
 export { default as CapacityBadge } from './workload/CapacityBadge';
 export { default as WorkloadClient } from './workload/WorkloadClient';
+
+export { default as ReportsClient } from './reports/ReportsClient';
