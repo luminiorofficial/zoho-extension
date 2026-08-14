@@ -82,6 +82,7 @@ async function run(): Promise<void> {
       '007_employee_workflow.sql',
       '008_kpi_evaluations.sql',
       '009_excel_migration_provenance.sql',
+      '010_historical_progress_reporting.sql',
     ]) {
       await client.query(fs.readFileSync(path.join(process.cwd(), 'database', migration), 'utf8'));
     }
@@ -390,6 +391,39 @@ async function run(): Promise<void> {
       [weekGoal.rows[0].id, action.rows[0].id, projectId, memberId],
     );
 
+    const unmarkedWorkload = await client.query<{ availability_status: string }>(
+      MEMBER_WORKLOAD_QUERY,
+      [[memberId]],
+    );
+    assert(
+      unmarkedWorkload.rows[0].availability_status === 'NOT_MARKED',
+      'Workload must show missing attendance as Not Marked rather than absent.',
+    );
+    await client.query(
+      `INSERT INTO attendance_records (member_id, attendance_date, status, source)
+       VALUES ($1, CURRENT_DATE, 'ABSENT', 'MANUAL')`,
+      [memberId],
+    );
+    const absentWorkload = await client.query<{ availability_status: string }>(
+      MEMBER_WORKLOAD_QUERY,
+      [[memberId]],
+    );
+    assert(
+      absentWorkload.rows[0].availability_status === 'ABSENT',
+      'Workload must retain an explicit absence as unavailable.',
+    );
+
+    await client.query(
+      `INSERT INTO daily_updates (
+         department_id, member_id, goal_id, action_id, update_date,
+         activity, status, entry_type, source_sheet, source_row, source_cell
+       ) VALUES
+         ($1, $2, $3, $4, CURRENT_DATE, 'Imported completed action', 'DONE', 'WORK', 'Management', 100, 'A100'),
+         ($1, $2, $3, NULL, CURRENT_DATE, 'Imported active goal', 'IN_PROGRESS', 'WORK', 'Operation', 101, 'A101'),
+         ($1, NULL, NULL, NULL, CURRENT_DATE, 'Imported department work', 'NOT_STARTED', 'WORK', 'Management', 102, 'A102')`,
+      [departmentId, memberId, goal.rows[0].id, action.rows[0].id],
+    );
+
     await expectConstraintFailure(
       client,
       'weekend_task',
@@ -457,23 +491,71 @@ async function run(): Promise<void> {
       action_progress: string;
       project_progress: string;
       goal_progress: string;
+      department_progress: string;
     }>(
       `SELECT wgp.progress_percent AS week_goal_progress,
               atp.progress_percent AS action_progress,
               ptp.progress_percent AS project_progress,
-              gtp.progress_percent AS goal_progress
+              gtp.progress_percent AS goal_progress,
+              dwp.progress_percent AS department_progress
          FROM week_goal_progress wgp
          JOIN week_goals wg ON wg.id = wgp.week_goal_id
          JOIN action_task_progress atp ON atp.action_id = wg.action_id
          JOIN project_task_progress ptp ON ptp.project_id = wg.project_id
          JOIN goal_task_progress gtp ON gtp.goal_id = wg.goal_id
+         JOIN department_work_progress dwp ON dwp.department_id = wg.department_id
         WHERE wg.id = $1`,
       [weekGoal.rows[0].id],
     );
     assert(Number(progress.rows[0].week_goal_progress) === 50, 'Weekly-goal progress must average task statuses.');
-    assert(Number(progress.rows[0].action_progress) === 50, 'Action progress must update from daily tasks.');
+    assert(Number(progress.rows[0].action_progress) === 62.5, 'Action progress must combine task and imported history scores.');
     assert(Number(progress.rows[0].project_progress) === 50, 'Project progress must update from daily tasks.');
-    assert(Number(progress.rows[0].goal_progress) === 50, 'Goal progress must update from daily tasks.');
+    assert(Number(progress.rows[0].goal_progress) === 60, 'Goal progress must combine task and imported history scores.');
+    assert(Number(progress.rows[0].department_progress) === 50, 'Department progress must include imported department history.');
+
+    const reportingProgress = await client.query<{
+      total_tasks: number;
+      done_tasks: number;
+      progress_percent: string;
+    }>(
+      `SELECT COALESCE(SUM(total_tasks), 0)::integer AS total_tasks,
+              COALESCE(SUM(done_tasks), 0)::integer AS done_tasks,
+              ROUND(SUM(progress_percent * total_tasks) / NULLIF(SUM(total_tasks), 0), 2) AS progress_percent
+         FROM task_period_progress
+        WHERE department_id = $1
+          AND period_type = 'WEEKLY'
+          AND period_start = DATE_TRUNC('week', CURRENT_DATE)::date`,
+      [departmentId],
+    );
+    assert(reportingProgress.rows[0].total_tasks === 6, 'Reports must include task and imported work entries.');
+    assert(reportingProgress.rows[0].done_tasks === 2, 'Reports must count completed imported work entries.');
+    assert(Number(reportingProgress.rows[0].progress_percent) === 50, 'Reports must weight imported and planned work together.');
+    const goalReportingProgress = await client.query<{
+      total_tasks: number;
+      progress_percent: string;
+    }>(
+      `SELECT COALESCE(SUM(total_tasks), 0)::integer AS total_tasks,
+              ROUND(SUM(progress_percent * total_tasks) / NULLIF(SUM(total_tasks), 0), 2) AS progress_percent
+         FROM task_period_progress
+        WHERE department_id = $1
+          AND goal_id = $2
+          AND period_type = 'WEEKLY'
+          AND period_start = DATE_TRUNC('week', CURRENT_DATE)::date`,
+      [departmentId, goal.rows[0].id],
+    );
+    assert(goalReportingProgress.rows[0].total_tasks === 5, 'Goal reports must exclude department-only history.');
+    assert(Number(goalReportingProgress.rows[0].progress_percent) === 60, 'Goal reports must include goal-scoped imported history.');
+    const historicalRows = await client.query<{ status: string }>(
+      `SELECT status
+         FROM daily_updates
+        WHERE source_sheet IN ('Management', 'Operation')
+          AND source_row BETWEEN 100 AND 102
+        ORDER BY source_row`,
+    );
+    assert(
+      historicalRows.rows.map((row) => row.status).join(',') === 'DONE,IN_PROGRESS,NOT_STARTED',
+      'Progress aggregation must not modify imported rows.',
+    );
 
     await client.query('SAVEPOINT carry_forward_test');
     const sourceTask = await client.query<{ id: string }>(

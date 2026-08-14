@@ -36,7 +36,9 @@ export default function MemberAttendancePanel({
 }) {
   const router = useRouter();
   const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus>(
-    summary.todayStatus === 'Approved Leave' ? 'Present' : summary.todayStatus,
+    summary.todayStatus === 'Approved Leave' || summary.todayStatus === 'Not Marked'
+      ? 'Present'
+      : summary.todayStatus,
   );
   const [attendanceNote, setAttendanceNote] = useState('');
   const [departmentId, setDepartmentId] = useState(departments[0]?.id ?? '');

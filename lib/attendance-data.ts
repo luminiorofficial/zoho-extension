@@ -2,7 +2,12 @@ import 'server-only';
 
 import type { QueryResultRow } from 'pg';
 
-import { attendanceStatusLabel, leaveStatusLabel, todayInIndia } from '@/lib/attendance-utils';
+import {
+  attendanceStatusLabel,
+  availabilityStatusLabel,
+  leaveStatusLabel,
+  todayInIndia,
+} from '@/lib/attendance-utils';
 import { db } from '@/lib/db';
 import type {
   AttendanceRecord,
@@ -147,7 +152,7 @@ export async function getDepartmentAttendanceToday(
     `SELECT m.id AS member_id,
             m.name AS member_name,
             m.role_title,
-            COALESCE(ah.status, 'ABSENT') AS status
+            COALESCE(ah.status, 'NOT_MARKED') AS status
        FROM department_members dm
        JOIN members m ON m.id = dm.member_id AND m.is_active
        LEFT JOIN attendance_history ah
@@ -161,7 +166,7 @@ export async function getDepartmentAttendanceToday(
     memberId: row.member_id,
     memberName: row.member_name,
     role: row.role_title ?? '—',
-    status: attendanceStatusLabel(row.status),
+    status: availabilityStatusLabel(row.status),
   }));
 }
 
@@ -178,7 +183,7 @@ export async function getMemberAttendanceSummary(memberId: string): Promise<Atte
     totals[record.status] += 1;
     return totals;
   }, emptyCounts);
-  const todayStatus = history.find((record) => record.date === todayInIndia())?.status ?? 'Absent';
+  const todayStatus = history.find((record) => record.date === todayInIndia())?.status ?? 'Not Marked';
 
   return { todayStatus, counts, history };
 }

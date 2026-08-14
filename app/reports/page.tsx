@@ -39,7 +39,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
   return (
     <Layout>
-      <div className="mb-8"><h1 className="text-2xl font-bold text-slate-900">Progress Reports & Evaluations</h1><p className="mt-1 text-sm text-slate-500">Compare task delivery and KPI achievement across weekly, monthly, financial-quarter, and Apr–Mar financial-year periods.</p></div>
+      <div className="mb-8"><h1 className="text-2xl font-bold text-slate-900">Progress Reports & Evaluations</h1><p className="mt-1 text-sm text-slate-500">Compare imported and planned work delivery with KPI achievement across weekly, monthly, financial-quarter, and Apr–Mar financial-year periods.</p></div>
       <ReportsClient
         key={[
           data.filters.departmentId,

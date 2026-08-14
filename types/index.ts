@@ -36,6 +36,13 @@ export const ATTENDANCE_STATUSES = [
 
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
+export type AvailabilityStatus = AttendanceStatus | 'Not Marked';
+
+export const AVAILABILITY_STATUSES: AvailabilityStatus[] = [
+  ...ATTENDANCE_STATUSES,
+  'Not Marked',
+];
+
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 
 export type Priority =
@@ -183,7 +190,7 @@ export interface MemberWorkload {
   completedThisWeekTaskCount: number;
   overdueTaskCount: number;
   capacityStatus: CapacityStatus;
-  availabilityStatus: AttendanceStatus;
+  availabilityStatus: AvailabilityStatus;
   activeProjects: ProjectAllocation[];
 }
 
@@ -201,7 +208,7 @@ export interface AttendanceRecord {
 }
 
 export interface AttendanceSummary {
-  todayStatus: AttendanceStatus;
+  todayStatus: AvailabilityStatus;
   counts: Record<AttendanceStatus, number>;
   history: AttendanceRecord[];
 }
@@ -210,7 +217,7 @@ export interface DepartmentAttendanceMember {
   memberId: string;
   memberName: string;
   role: string;
-  status: AttendanceStatus;
+  status: AvailabilityStatus;
 }
 
 export interface LeaveRequest {

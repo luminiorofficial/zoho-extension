@@ -59,7 +59,7 @@ export const MEMBER_WORKLOAD_QUERY = `
          COALESCE(tm.due_this_week_task_count, 0)::integer AS due_this_week_task_count,
          COALESCE(tm.completed_this_week_task_count, 0)::integer AS completed_this_week_task_count,
          COALESCE(tm.overdue_task_count, 0)::integer AS overdue_task_count,
-         COALESCE(today_attendance.status, 'ABSENT') AS availability_status,
+         COALESCE(today_attendance.status, 'NOT_MARKED') AS availability_status,
          COALESCE(ap.active_projects, '[]'::jsonb) AS active_projects
     FROM members m
     LEFT JOIN active_projects ap ON ap.member_id = m.id

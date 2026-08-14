@@ -1,4 +1,4 @@
-import type { AttendanceStatus, LeaveRequestStatus } from '@/types';
+import type { AttendanceStatus, AvailabilityStatus, LeaveRequestStatus } from '@/types';
 
 export const attendanceStatusValues = [
   'PRESENT',
@@ -16,6 +16,11 @@ export function attendanceStatusLabel(value: string): AttendanceStatus {
   if (value === 'WORK_ON_HOLIDAY') return 'Work on Holiday';
   if (value === 'ABSENT') return 'Absent';
   return 'Present';
+}
+
+export function availabilityStatusLabel(value: string): AvailabilityStatus {
+  if (value === 'NOT_MARKED') return 'Not Marked';
+  return attendanceStatusLabel(value);
 }
 
 export function attendanceStatusValue(value: AttendanceStatus): AttendanceStatusValue {

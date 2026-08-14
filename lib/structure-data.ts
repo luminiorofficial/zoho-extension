@@ -16,6 +16,7 @@ interface DepartmentRow extends QueryResultRow {
   name: string;
   description: string | null;
   is_active: boolean;
+  progress_percent: string | null;
 }
 
 interface MemberRow extends QueryResultRow {
@@ -119,9 +120,14 @@ export async function getStructureData(): Promise<StructureData> {
     actionAssigneeResult,
   ] = await Promise.all([
     db.query<DepartmentRow>(
-      `SELECT id, name, description, is_active
-         FROM departments
-        ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name`,
+      `SELECT d.id,
+              d.name,
+              d.description,
+              d.is_active,
+              dwp.progress_percent
+         FROM departments d
+         LEFT JOIN department_work_progress dwp ON dwp.department_id = d.id
+        ORDER BY d.source_sheet NULLS LAST, d.source_row NULLS LAST, d.name`,
     ),
     db.query<MemberRow>(
       `SELECT id, name, email, role_title, is_active
@@ -273,7 +279,7 @@ export async function getStructureData(): Promise<StructureData> {
       };
     });
 
-    const progress = goals.length
+    const goalProgress = goals.length
       ? Math.round(goals.reduce((total, goal) => total + goal.progress, 0) / goals.length)
       : 0;
 
@@ -285,7 +291,9 @@ export async function getStructureData(): Promise<StructureData> {
       headId: departmentMemberResult.rows.find(
         (membership) => membership.department_id === department.id && membership.is_department_head,
       )?.member_id,
-      progress,
+      progress: department.progress_percent === null
+        ? goalProgress
+        : Math.round(Number(department.progress_percent)),
       isActive: department.is_active,
       goals,
     };

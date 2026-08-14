@@ -155,7 +155,7 @@ export default function ReportsClient({ data }: { data: ReportingData }) {
       </form>
 
       <div className="grid gap-5 md:grid-cols-2">
-        <MetricCard title="Task Progress" progress={data.taskProgress.progress} detail={`${data.taskProgress.doneTasks}/${data.taskProgress.totalTasks} tasks done`} icon={CheckSquare} />
+        <MetricCard title="Work Progress" progress={data.taskProgress.progress} detail={`${data.taskProgress.doneTasks}/${data.taskProgress.totalTasks} work records done`} icon={CheckSquare} />
         <MetricCard title="KPI Progress" progress={data.kpiProgress} detail={`${data.kpis.filter((kpi) => kpi.achievedValue !== undefined).length}/${data.kpis.length} KPIs measured`} icon={Target} />
       </div>
 

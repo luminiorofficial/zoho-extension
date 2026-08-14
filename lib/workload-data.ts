@@ -3,7 +3,7 @@ import 'server-only';
 import type { QueryResultRow } from 'pg';
 
 import { getCapacityStatus } from '@/lib/capacity';
-import { attendanceStatusLabel } from '@/lib/attendance-utils';
+import { availabilityStatusLabel } from '@/lib/attendance-utils';
 import { db } from '@/lib/db';
 import { MEMBER_WORKLOAD_QUERY } from '@/lib/workload-query';
 import type { MemberWorkload, ProjectAllocation, ProjectStatus } from '@/types';
@@ -68,7 +68,7 @@ export async function getMemberWorkloads(memberIds?: string[]): Promise<MemberWo
       ...metrics,
       completedThisWeekTaskCount: Number(row.completed_this_week_task_count),
       capacityStatus: getCapacityStatus(metrics),
-      availabilityStatus: attendanceStatusLabel(row.availability_status),
+      availabilityStatus: availabilityStatusLabel(row.availability_status),
       activeProjects: row.active_projects.map(mapAllocation),
     };
   });

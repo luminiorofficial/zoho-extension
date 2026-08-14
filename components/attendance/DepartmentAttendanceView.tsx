@@ -1,14 +1,14 @@
 import Link from 'next/link';
 
 import AttendanceStatusBadge from '@/components/attendance/AttendanceStatusBadge';
-import { ATTENDANCE_STATUSES, type DepartmentAttendanceMember } from '@/types';
+import { AVAILABILITY_STATUSES, type DepartmentAttendanceMember } from '@/types';
 
 export default function DepartmentAttendanceView({
   members,
 }: {
   members: DepartmentAttendanceMember[];
 }) {
-  const counts = ATTENDANCE_STATUSES.map((status) => ({
+  const counts = AVAILABILITY_STATUSES.map((status) => ({
     status,
     count: members.filter((member) => member.status === status).length,
   }));
@@ -19,7 +19,7 @@ export default function DepartmentAttendanceView({
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Today&apos;s Attendance</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Live availability for department staffing. Unmarked members appear as absent.
+            Live availability for department staffing. Unmarked members appear as Not Marked.
           </p>
         </div>
         <Link href="/attendance" className="text-sm font-medium text-blue-600 hover:text-blue-700">
@@ -27,7 +27,7 @@ export default function DepartmentAttendanceView({
         </Link>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {counts.map(({ status, count }) => (
           <div key={status} className="rounded-xl border border-slate-200 bg-white p-4">
             <AttendanceStatusBadge status={status} />
