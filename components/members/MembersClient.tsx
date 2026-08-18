@@ -19,6 +19,7 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
+  const [team, setTeam] = useState('');
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +30,7 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
     setName(member?.name ?? '');
     setEmail(member?.email === '—' ? '' : (member?.email ?? ''));
     setRole(member?.role === '—' ? '' : (member?.role ?? ''));
+    setTeam(member?.team === '—' ? '' : (member?.team ?? ''));
     setDepartmentIds(member?.departmentIds ?? (member?.departmentId ? [member.departmentId] : []));
     setError('');
   }
@@ -47,7 +49,7 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
       const response = await fetch(editing ? `/api/members/${editing.id}` : '/api/members', {
         method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, role, departmentIds }),
+        body: JSON.stringify({ name, email, role, team, departmentIds }),
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error ?? 'Could not save the member.');
@@ -93,7 +95,15 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
         <table className="w-full min-w-[760px]">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
-              {['Name', 'Email', 'Role', 'Department', 'Status', 'Actions'].map((label) => <th key={label} className={`px-5 py-3 text-xs font-semibold uppercase text-slate-500 ${label === 'Actions' ? 'text-right' : 'text-left'}`}>{label}</th>)}
+              {[
+  'Name',
+  'Email',
+  'Designation',
+  'Team',
+  'Department',
+  'Status',
+  'Actions',
+].map((label) => <th key={label} className={`px-5 py-3 text-xs font-semibold uppercase text-slate-500 ${label === 'Actions' ? 'text-right' : 'text-left'}`}>{label}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -105,6 +115,9 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
                   <td className="px-5 py-4 font-medium text-slate-900"><Link href={`/members/${member.id}`} className="hover:text-blue-700">{member.name}</Link></td>
                   <td className="px-5 py-4 text-sm text-slate-500">{member.email}</td>
                   <td className="px-5 py-4 text-sm text-slate-600">{member.role}</td>
+                  <td className="px-5 py-4 text-sm text-slate-600">
+  {member.team ?? '—'}
+</td>
                   <td className="px-5 py-4 text-sm text-slate-600">{assignedDepartments.join(', ') || 'Unassigned'}</td>
                   <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-5 py-4"><div className="flex items-center justify-end gap-2">
@@ -128,7 +141,16 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
                 <label className="text-sm font-medium text-slate-700">Name<input required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
                 <label className="text-sm font-medium text-slate-700">Email<input type="email" maxLength={255} value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
               </div>
-              <label className="block text-sm font-medium text-slate-700">Role<input maxLength={200} value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+              <label className="block text-sm font-medium text-slate-700">Designation<input maxLength={200} value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+              <label className="block text-sm font-medium text-slate-700">
+  Team
+  <input
+    maxLength={200}
+    value={team}
+    onChange={(event) => setTeam(event.target.value)}
+    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+  />
+</label>
               <fieldset><legend className="text-sm font-medium text-slate-700">Departments</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {departments.map((department) => {
                   const checked = departmentIds.includes(department.id);

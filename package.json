@@ -11,7 +11,8 @@
     "db:test": "tsx scripts/database-tests.ts",
     "migration:test": "tsx --test scripts/import-stop-data.test.ts",
     "migration:validate": "tsx scripts/validate-stop-migration.ts",
-    "projects:backfill": "tsx scripts/backfill-excel-projects.ts"
+    "projects:backfill": "tsx scripts/backfill-excel-projects.ts",
+    "master:sync": "tsx scripts/sync-client-master-data.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

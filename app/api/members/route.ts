@@ -7,6 +7,7 @@ interface MemberPayload {
   name?: unknown;
   email?: unknown;
   role?: unknown;
+  team?: unknown;
   departmentIds?: unknown;
 }
 
@@ -25,8 +26,16 @@ export async function POST(request: Request) {
   const name = textValue(payload.name, 200);
   const email = textValue(payload.email, 255);
   const role = textValue(payload.role, 200);
+  const team = textValue(payload.team, 200);
   const departmentIds = uuidArray(payload.departmentIds);
-  if (!name || email === null || role === null || !validEmail(email) || !departmentIds?.length) {
+  if (
+  !name ||
+  email === null ||
+  role === null ||
+  team === null ||
+  !validEmail(email) ||
+  !departmentIds?.length
+) {
     return Response.json(
       { error: 'Name, a valid email, role, and at least one department are required.' },
       { status: 400 },
@@ -47,9 +56,20 @@ export async function POST(request: Request) {
     }
 
     const result = await client.query<{ id: string }>(
-      `INSERT INTO members (name, email, role_title)
-       VALUES ($1, NULLIF($2, ''), NULLIF($3, '')) RETURNING id`,
-      [name, email, role],
+      `INSERT INTO members (
+   name,
+   email,
+   role_title,
+   team
+ )
+ VALUES (
+   $1,
+   NULLIF($2, ''),
+   NULLIF($3, ''),
+   NULLIF($4, '')
+ )
+ RETURNING id`,
+[name, email, role, team],
     );
     const memberId = result.rows[0].id;
     await client.query(

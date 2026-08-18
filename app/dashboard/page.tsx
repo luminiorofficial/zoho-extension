@@ -30,7 +30,11 @@ export default async function DashboardPage() {
     0
   );
 
-  const totalMembers = members.length;
+  const activeMembers = members.filter(
+  (member) => member.isActive !== false,
+);
+
+const totalMembers = activeMembers.length;
 
   const overallProgress =
     departments.length > 0

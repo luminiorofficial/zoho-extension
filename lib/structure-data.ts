@@ -24,6 +24,7 @@ interface MemberRow extends QueryResultRow {
   name: string;
   email: string | null;
   role_title: string | null;
+  team: string | null;
   is_active: boolean;
 }
 
@@ -130,7 +131,7 @@ export async function getStructureData(): Promise<StructureData> {
         ORDER BY d.source_sheet NULLS LAST, d.source_row NULLS LAST, d.name`,
     ),
     db.query<MemberRow>(
-      `SELECT id, name, email, role_title, is_active
+      `SELECT id, name, email, role_title, team, is_active
          FROM members
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name`,
     ),
@@ -196,14 +197,15 @@ export async function getStructureData(): Promise<StructureData> {
   const members: Member[] = memberResult.rows.map((member) => {
     const departmentIds = departmentIdsByMember.get(member.id) ?? [];
     return {
-      id: member.id,
-      name: member.name,
-      email: member.email ?? '—',
-      role: member.role_title ?? '—',
-      departmentId: departmentIds[0] ?? '',
-      departmentIds,
-      isActive: member.is_active,
-    };
+  id: member.id,
+  name: member.name,
+  email: member.email ?? '—',
+  role: member.role_title ?? '—',
+  team: member.team ?? '—',
+  departmentId: departmentIds[0] ?? '',
+  departmentIds,
+  isActive: member.is_active,
+};
   });
 
   const targetRowsByGoal = new Map<string, TargetRow[]>();

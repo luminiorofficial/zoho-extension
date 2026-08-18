@@ -227,8 +227,9 @@ export async function getProjects(
        JOIN goals g ON g.id = p.goal_id
        LEFT JOIN members owner ON owner.id = p.owner_member_id
        LEFT JOIN project_task_progress ptp ON ptp.project_id = p.id
-      WHERE ($1::uuid IS NULL OR p.department_id = $1)
-        AND (
+      WHERE p.is_active = TRUE
+  AND ($1::uuid IS NULL OR p.department_id = $1)
+  AND (
           $2::uuid IS NULL
           OR EXISTS (
             SELECT 1 FROM project_members pm

@@ -56,6 +56,7 @@ export interface Member {
   name: string;
   email: string;
   role: string;
+  team?: string;
   departmentId: string;
   departmentIds?: string[];
   specialization?: string;

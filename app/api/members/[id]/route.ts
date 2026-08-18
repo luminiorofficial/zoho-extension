@@ -7,6 +7,7 @@ interface MemberPatchPayload {
   name?: unknown;
   email?: unknown;
   role?: unknown;
+  team?: unknown;
   departmentIds?: unknown;
   isActive?: unknown;
 }
@@ -58,11 +59,18 @@ export async function PATCH(
     }
     add('email', email || null);
   }
-  if ('role' in payload) {
-    const role = textValue(payload.role, 200);
-    if (role === null) return Response.json({ error: 'Role is too long.' }, { status: 400 });
-    add('role_title', role || null);
+  if ('team' in payload) {
+  const team = textValue(payload.team, 200);
+
+  if (team === null) {
+    return Response.json(
+      { error: 'Team is too long.' },
+      { status: 400 },
+    );
   }
+
+  add('team', team || null);
+}
   if ('isActive' in payload) {
     if (typeof payload.isActive !== 'boolean') {
       return Response.json({ error: 'Active status must be true or false.' }, { status: 400 });
