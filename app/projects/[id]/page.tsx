@@ -23,21 +23,14 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  // -------------------------------------------------------
-  // ALL CURRENT ACTIVE MEMBERS
-  // -------------------------------------------------------
-  // Do NOT filter members by project department.
-  //
-  // A project may use people from:
-  // AI
-  // CGI
-  // Editing
-  // Production
-  // Post Production
-  // Management
-  // etc.
-  // -------------------------------------------------------
-
+  /*
+   * IMPORTANT:
+   * Project editing must show ALL active company members.
+   *
+   * Do not filter members by the project's department because
+   * a project can contain members from Operation, Management,
+   * CGI, AI, Editing, Production, Post Production, etc.
+   */
   const activeMemberIds = new Set(
     structure.members
       .filter((member) => member.isActive !== false)
@@ -48,18 +41,16 @@ export default async function ProjectDetailPage({
     activeMemberIds.has(workload.memberId),
   );
 
-  // -------------------------------------------------------
-  // ACTIVE DEPARTMENTS + GOALS
-  // These will be used by Edit Project so the client can
-  // change OPERATION -> MANAGEMENT etc.
-  // -------------------------------------------------------
-
+  /*
+   * Used by the Edit Project form.
+   * Department can be changed and then the corresponding
+   * KEY / Goal can be selected.
+   */
   const departments = structure.departments
     .filter((department) => department.isActive)
     .map((department) => ({
       id: department.id,
       name: department.name,
-
       goals: department.goals
         .filter((goal) => goal.isActive !== false)
         .map((goal) => ({
