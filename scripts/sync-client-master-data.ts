@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import fs from "node:fs";
 import path from "node:path";
+import type { PoolClient } from "pg";
 
 function loadLocalEnvironment(): void {
   const envPath = path.join(process.cwd(), ".env.local");
@@ -24,7 +25,9 @@ function loadLocalEnvironment(): void {
 }
 
 function cellText(cell: ExcelJS.Cell): string {
-  return String(cell.text ?? "").replace(/\s+/g, " ").trim();
+  return String(cell.text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalize(value: string): string {
@@ -54,6 +57,7 @@ async function readEmployees(
   filePath: string,
 ): Promise<EmployeeMaster[]> {
   const workbook = new ExcelJS.Workbook();
+
   await workbook.xlsx.readFile(filePath);
 
   const worksheet =
@@ -66,8 +70,19 @@ async function readEmployees(
 
   const employees: EmployeeMaster[] = [];
 
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+  for (
+    let rowNumber = 2;
+    rowNumber <= worksheet.rowCount;
+    rowNumber += 1
+  ) {
     const row = worksheet.getRow(rowNumber);
+
+    // Team Alignment.xlsx
+    //
+    // B = Name
+    // F = Designation
+    // G = Team
+    // H = Departments
 
     const name = cellText(row.getCell(2));
     const designation = cellText(row.getCell(6));
@@ -100,12 +115,6 @@ function parseProject(
     throw new Error(`Invalid project Job No: ${jobNo}`);
   }
 
-  // Example:
-  // A1/001/2627/Tilt Brand/Wipro/Santoor Fresh Skin
-  //
-  // code = A1/001/2627
-  // name = Tilt Brand / Wipro / Santoor Fresh Skin
-
   const jobCode = parts.slice(0, 3).join("/");
   const name = parts.slice(3).join(" / ");
 
@@ -136,6 +145,7 @@ async function readProjects(
   filePath: string,
 ): Promise<ProjectMaster[]> {
   const workbook = new ExcelJS.Workbook();
+
   await workbook.xlsx.readFile(filePath);
 
   const worksheet =
@@ -148,7 +158,11 @@ async function readProjects(
 
   const projects: ProjectMaster[] = [];
 
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+  for (
+    let rowNumber = 2;
+    rowNumber <= worksheet.rowCount;
+    rowNumber += 1
+  ) {
     const row = worksheet.getRow(rowNumber);
 
     const jobNo = cellText(row.getCell(2));
@@ -156,307 +170,222 @@ async function readProjects(
 
     if (!jobNo) continue;
 
-    projects.push(parseProject(jobNo, projectType));
+    projects.push(
+      parseProject(jobNo, projectType),
+    );
   }
 
   return projects;
 }
 
-async function run(): Promise<void> {
-  loadLocalEnvironment();
-
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is missing.");
-  }
-
-  const applyChanges = process.argv.includes("--apply");
-
-  const employeeFile = path.join(
-    process.cwd(),
-    "imports",
-    "Team Alignment.xlsx",
+async function getOrCreateDepartment(
+  client: PoolClient,
+  departmentName: string,
+): Promise<string> {
+  const existing = await client.query<{ id: string }>(
+    `
+    SELECT id
+      FROM departments
+     WHERE UPPER(
+             REGEXP_REPLACE(
+               BTRIM(name),
+               '[[:space:]]+',
+               ' ',
+               'g'
+             )
+           ) =
+           UPPER(
+             REGEXP_REPLACE(
+               BTRIM($1),
+               '[[:space:]]+',
+               ' ',
+               'g'
+             )
+           )
+     ORDER BY is_active DESC, created_at
+     LIMIT 1
+    `,
+    [departmentName],
   );
 
-  const projectFile = path.join(
-    process.cwd(),
-    "imports",
-    "CAC Projects.xlsx",
-  );
+  if (existing.rows[0]) {
+    const departmentId = existing.rows[0].id;
 
-  if (!fs.existsSync(employeeFile)) {
-    throw new Error(`Missing ${employeeFile}`);
-  }
-
-  if (!fs.existsSync(projectFile)) {
-    throw new Error(`Missing ${projectFile}`);
-  }
-
-  const employees = await readEmployees(employeeFile);
-  const projects = await readProjects(projectFile);
-
-  console.log("");
-  console.log("===================================");
-  console.log("CLIENT MASTER DATA SYNC");
-  console.log("===================================");
-  console.log(`Employees found: ${employees.length}`);
-  console.log(`Projects found: ${projects.length}`);
-  console.log("");
-
-  if (employees.length !== 47) {
-    throw new Error(
-      `Expected 47 employees but found ${employees.length}.`,
-    );
-  }
-
-  if (projects.length !== 40) {
-    throw new Error(
-      `Expected 40 projects but found ${projects.length}.`,
-    );
-  }
-
-  console.log("Employees:");
-  employees.forEach((employee, index) => {
-    console.log(
-      `${index + 1}. ${employee.name} | ${employee.designation} | ${employee.team} | ${employee.department}`,
-    );
-  });
-
-  console.log("");
-  console.log("Projects:");
-  projects.forEach((project, index) => {
-    console.log(
-      `${index + 1}. ${project.jobCode} | ${project.name} | ${project.projectType}`,
-    );
-  });
-
-  if (!applyChanges) {
-    console.log("");
-    console.log("DRY RUN ONLY.");
-    console.log("No database changes were made.");
-    console.log("");
-    console.log(
-      "Run again with --apply after checking the above data.",
-    );
-    return;
-  }
-
-  const { db } = await import("../lib/db");
-
-  const client = await db.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    // =====================================================
-    // EMPLOYEES
-    // =====================================================
-
-    // Everything currently in DB becomes inactive first.
-    // Matching/current 47 records are reactivated below.
-    await client.query(`
-      UPDATE members
-         SET is_active = FALSE
-    `);
-
-    for (const employee of employees) {
-      const existing = await client.query<{ id: string }>(
-        `
-        SELECT id
-          FROM members
-         WHERE UPPER(
-                 REGEXP_REPLACE(BTRIM(name), '\\s+', ' ', 'g')
-               ) =
-               UPPER(
-                 REGEXP_REPLACE(BTRIM($1), '\\s+', ' ', 'g')
-               )
-         ORDER BY created_at
-         LIMIT 1
-        `,
-        [employee.name],
-      );
-
-      let memberId: string;
-
-      if (existing.rows[0]) {
-        memberId = existing.rows[0].id;
-
-        await client.query(
-          `
-          UPDATE members
-             SET name = $2,
-                 role_title = NULLIF($3, ''),
-                 team = NULLIF($4, ''),
-                 is_active = TRUE,
-                 updated_at = NOW()
-           WHERE id = $1
-          `,
-          [
-            memberId,
-            employee.name,
-            employee.designation,
-            employee.team,
-          ],
-        );
-      } else {
-        const inserted = await client.query<{ id: string }>(
-          `
-          INSERT INTO members (
-            name,
-            role_title,
-            team,
-            is_active
-          )
-          VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), TRUE)
-          RETURNING id
-          `,
-          [
-            employee.name,
-            employee.designation,
-            employee.team,
-          ],
-        );
-
-        memberId = inserted.rows[0].id;
-      }
-
-      // Only create/assign a department when this member
-      // currently has NO department membership.
-      //
-      // This preserves historical STOP relationships.
-      const currentMembership = await client.query<{
-        count: number;
-      }>(
-        `
-        SELECT COUNT(*)::integer AS count
-          FROM department_members
-         WHERE member_id = $1
-        `,
-        [memberId],
-      );
-
-      if (
-        currentMembership.rows[0].count === 0 &&
-        employee.department
-      ) {
-        let department = await client.query<{ id: string }>(
-          `
-          SELECT id
-            FROM departments
-           WHERE UPPER(
-                   REGEXP_REPLACE(BTRIM(name), '\\s+', ' ', 'g')
-                 ) =
-                 UPPER(
-                   REGEXP_REPLACE(BTRIM($1), '\\s+', ' ', 'g')
-                 )
-           ORDER BY is_active DESC, created_at
-           LIMIT 1
-          `,
-          [employee.department],
-        );
-
-        let departmentId: string;
-
-        if (department.rows[0]) {
-          departmentId = department.rows[0].id;
-
-          await client.query(
-            `
-            UPDATE departments
-               SET is_active = TRUE,
-                   updated_at = NOW()
-             WHERE id = $1
-            `,
-            [departmentId],
-          );
-        } else {
-          department = await client.query<{ id: string }>(
-            `
-            INSERT INTO departments (
-              name,
-              is_active
-            )
-            VALUES ($1, TRUE)
-            RETURNING id
-            `,
-            [employee.department],
-          );
-
-          departmentId = department.rows[0].id;
-        }
-
-        await client.query(
-          `
-          INSERT INTO department_members (
-            department_id,
-            member_id
-          )
-          VALUES ($1, $2)
-          ON CONFLICT DO NOTHING
-          `,
-          [departmentId, memberId],
-        );
-      }
-    }
-
-    // =====================================================
-    // PROJECT MASTER DEPARTMENT
-    // =====================================================
-
-    let operationDepartment = await client.query<{
-      id: string;
-    }>(
+    await client.query(
       `
-      SELECT id
-        FROM departments
-       WHERE UPPER(BTRIM(name)) = 'OPERATION'
-       ORDER BY is_active DESC, created_at
-       LIMIT 1
+      UPDATE departments
+         SET is_active = TRUE,
+             updated_at = NOW()
+       WHERE id = $1
       `,
+      [departmentId],
     );
 
-    let operationDepartmentId: string;
+    return departmentId;
+  }
 
-    if (operationDepartment.rows[0]) {
-      operationDepartmentId =
-        operationDepartment.rows[0].id;
+  const inserted = await client.query<{ id: string }>(
+    `
+    INSERT INTO departments (
+      name,
+      is_active
+    )
+    VALUES ($1, TRUE)
+    RETURNING id
+    `,
+    [departmentName],
+  );
 
-      await client.query(
+  return inserted.rows[0].id;
+}
+
+async function syncEmployee(
+  client: PoolClient,
+  employee: EmployeeMaster,
+): Promise<void> {
+  if (!employee.department) {
+    throw new Error(
+      `Department is missing for employee: ${employee.name}`,
+    );
+  }
+
+  const departmentId =
+    await getOrCreateDepartment(
+      client,
+      employee.department,
+    );
+
+  const existing = await client.query<{ id: string }>(
+    `
+    SELECT id
+      FROM members
+     WHERE UPPER(
+             REGEXP_REPLACE(
+               BTRIM(name),
+               '[[:space:]]+',
+               ' ',
+               'g'
+             )
+           ) =
+           UPPER(
+             REGEXP_REPLACE(
+               BTRIM($1),
+               '[[:space:]]+',
+               ' ',
+               'g'
+             )
+           )
+     ORDER BY created_at
+     LIMIT 1
+    `,
+    [employee.name],
+  );
+
+  let memberId: string;
+
+  if (existing.rows[0]) {
+    memberId = existing.rows[0].id;
+
+    await client.query(
+      `
+      UPDATE members
+         SET name = $2,
+             role_title = NULLIF($3, ''),
+             team = NULLIF($4, ''),
+             current_department_id = $5,
+             is_active = TRUE,
+             updated_at = NOW()
+       WHERE id = $1
+      `,
+      [
+        memberId,
+        employee.name,
+        employee.designation,
+        employee.team,
+        departmentId,
+      ],
+    );
+  } else {
+    const inserted =
+      await client.query<{ id: string }>(
         `
-        UPDATE departments
-           SET is_active = TRUE,
-               updated_at = NOW()
-         WHERE id = $1
-        `,
-        [operationDepartmentId],
-      );
-    } else {
-      operationDepartment = await client.query<{
-        id: string;
-      }>(
-        `
-        INSERT INTO departments (
+        INSERT INTO members (
           name,
-          description,
+          role_title,
+          team,
+          current_department_id,
           is_active
         )
         VALUES (
-          'OPERATION',
-          'Current operational project master',
+          $1,
+          NULLIF($2, ''),
+          NULLIF($3, ''),
+          $4,
           TRUE
         )
         RETURNING id
         `,
+        [
+          employee.name,
+          employee.designation,
+          employee.team,
+          departmentId,
+        ],
       );
 
-      operationDepartmentId =
-        operationDepartment.rows[0].id;
-    }
+    memberId = inserted.rows[0].id;
+  }
 
-    // =====================================================
-    // MASTER PROJECT GOAL
-    // =====================================================
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT delete old department_members rows.
+   *
+   * They may be referenced by historical weekly plans,
+   * goals, tasks, attendance, etc.
+   *
+   * We only make sure that the CURRENT department
+   * relationship exists.
+   */
+  await client.query(
+    `
+    INSERT INTO department_members (
+      department_id,
+      member_id
+    )
+    VALUES ($1, $2)
+    ON CONFLICT (department_id, member_id)
+    DO NOTHING
+    `,
+    [
+      departmentId,
+      memberId,
+    ],
+  );
+}
 
-    let masterGoal = await client.query<{ id: string }>(
+async function syncProjects(
+  client: PoolClient,
+  projects: ProjectMaster[],
+): Promise<void> {
+  /*
+   * Projects are intentionally left under the
+   * existing OPERATION / PROJECT_MASTER structure
+   * for now.
+   *
+   * Zoho department-wise project mapping will be
+   * implemented separately after member departments
+   * are correct.
+   */
+
+  const operationDepartmentId =
+    await getOrCreateDepartment(
+      client,
+      "OPERATION",
+    );
+
+  let masterGoal =
+    await client.query<{ id: string }>(
       `
       SELECT id
         FROM goals
@@ -467,23 +396,25 @@ async function run(): Promise<void> {
       [operationDepartmentId],
     );
 
-    let masterGoalId: string;
+  let masterGoalId: string;
 
-    if (masterGoal.rows[0]) {
-      masterGoalId = masterGoal.rows[0].id;
+  if (masterGoal.rows[0]) {
+    masterGoalId =
+      masterGoal.rows[0].id;
 
-      await client.query(
-        `
-        UPDATE goals
-           SET title = 'Current Projects',
-               is_active = TRUE,
-               updated_at = NOW()
-         WHERE id = $1
-        `,
-        [masterGoalId],
-      );
-    } else {
-      masterGoal = await client.query<{ id: string }>(
+    await client.query(
+      `
+      UPDATE goals
+         SET title = 'Current Projects',
+             is_active = TRUE,
+             updated_at = NOW()
+       WHERE id = $1
+      `,
+      [masterGoalId],
+    );
+  } else {
+    masterGoal =
+      await client.query<{ id: string }>(
         `
         INSERT INTO goals (
           department_id,
@@ -508,24 +439,20 @@ async function run(): Promise<void> {
         [operationDepartmentId],
       );
 
-      masterGoalId = masterGoal.rows[0].id;
-    }
+    masterGoalId =
+      masterGoal.rows[0].id;
+  }
 
-    // =====================================================
-    // PROJECTS
-    // =====================================================
+  await client.query(
+    `
+    UPDATE projects
+       SET is_active = FALSE
+    `,
+  );
 
-    // Hide every old/backfilled/manual project.
-    await client.query(`
-      UPDATE projects
-         SET is_active = FALSE
-    `);
-
-    for (const project of projects) {
-      // First try exact master job number.
-      let existingProject = await client.query<{
-        id: string;
-      }>(
+  for (const project of projects) {
+    let existingProject =
+      await client.query<{ id: string }>(
         `
         SELECT id
           FROM projects
@@ -535,17 +462,15 @@ async function run(): Promise<void> {
         [project.jobNo],
       );
 
-      // If this is the first sync, old projects will not have
-      // master_job_no. Try matching by project name.
-      if (!existingProject.rows[0]) {
-        existingProject = await client.query<{
-          id: string;
-        }>(
+    if (!existingProject.rows[0]) {
+      existingProject =
+        await client.query<{ id: string }>(
           `
           SELECT id
             FROM projects
            WHERE department_id = $1
-             AND LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+             AND LOWER(BTRIM(name)) =
+                 LOWER(BTRIM($2))
            ORDER BY created_at
            LIMIT 1
           `,
@@ -554,124 +479,339 @@ async function run(): Promise<void> {
             project.name,
           ],
         );
-      }
-
-      if (existingProject.rows[0]) {
-        await client.query(
-          `
-          UPDATE projects
-             SET department_id = $2,
-                 goal_id = $3,
-                 code = $4,
-                 name = $5,
-                 client_name = $6,
-                 status = $7,
-                 master_job_no = $8,
-                 project_type = $9,
-                 is_active = TRUE,
-                 updated_at = NOW()
-           WHERE id = $1
-          `,
-          [
-            existingProject.rows[0].id,
-            operationDepartmentId,
-            masterGoalId,
-            project.jobCode,
-            project.name,
-            project.clientName,
-            project.status,
-            project.jobNo,
-            project.projectType,
-          ],
-        );
-      } else {
-        await client.query(
-          `
-          INSERT INTO projects (
-            department_id,
-            goal_id,
-            code,
-            name,
-            client_name,
-            status,
-            master_job_no,
-            project_type,
-            is_active
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8,
-            TRUE
-          )
-          `,
-          [
-            operationDepartmentId,
-            masterGoalId,
-            project.jobCode,
-            project.name,
-            project.clientName,
-            project.status,
-            project.jobNo,
-            project.projectType,
-          ],
-        );
-      }
     }
 
-    // =====================================================
-    // FINAL VALIDATION
-    // =====================================================
+    if (existingProject.rows[0]) {
+      await client.query(
+        `
+        UPDATE projects
+           SET department_id = $2,
+               goal_id = $3,
+               code = $4,
+               name = $5,
+               client_name = $6,
+               status = $7,
+               master_job_no = $8,
+               project_type = $9,
+               is_active = TRUE,
+               updated_at = NOW()
+         WHERE id = $1
+        `,
+        [
+          existingProject.rows[0].id,
+          operationDepartmentId,
+          masterGoalId,
+          project.jobCode,
+          project.name,
+          project.clientName,
+          project.status,
+          project.jobNo,
+          project.projectType,
+        ],
+      );
+    } else {
+      await client.query(
+        `
+        INSERT INTO projects (
+          department_id,
+          goal_id,
+          code,
+          name,
+          client_name,
+          status,
+          master_job_no,
+          project_type,
+          is_active
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          TRUE
+        )
+        `,
+        [
+          operationDepartmentId,
+          masterGoalId,
+          project.jobCode,
+          project.name,
+          project.clientName,
+          project.status,
+          project.jobNo,
+          project.projectType,
+        ],
+      );
+    }
+  }
+}
 
-    const employeeCount = await client.query<{
-      count: number;
-    }>(
+async function run(): Promise<void> {
+  loadLocalEnvironment();
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is missing.",
+    );
+  }
+
+  const applyChanges =
+    process.argv.includes("--apply");
+
+  const employeeFile = path.join(
+    process.cwd(),
+    "imports",
+    "Team Alignment.xlsx",
+  );
+
+  const projectFile = path.join(
+    process.cwd(),
+    "imports",
+    "CAC Projects.xlsx",
+  );
+
+  if (!fs.existsSync(employeeFile)) {
+    throw new Error(
+      `Missing ${employeeFile}`,
+    );
+  }
+
+  if (!fs.existsSync(projectFile)) {
+    throw new Error(
+      `Missing ${projectFile}`,
+    );
+  }
+
+  const employees =
+    await readEmployees(employeeFile);
+
+  const projects =
+    await readProjects(projectFile);
+
+  console.log("");
+  console.log(
+    "===================================",
+  );
+  console.log(
+    "CLIENT MASTER DATA SYNC",
+  );
+  console.log(
+    "===================================",
+  );
+
+  console.log(
+    `Employees found: ${employees.length}`,
+  );
+
+  console.log(
+    `Projects found: ${projects.length}`,
+  );
+
+  console.log("");
+
+  if (employees.length !== 47) {
+    throw new Error(
+      `Expected 47 employees but found ${employees.length}.`,
+    );
+  }
+
+  if (projects.length !== 40) {
+    throw new Error(
+      `Expected 40 projects but found ${projects.length}.`,
+    );
+  }
+
+  const employeesWithoutDepartment =
+    employees.filter(
+      (employee) =>
+        !employee.department.trim(),
+    );
+
+  if (employeesWithoutDepartment.length) {
+    throw new Error(
+      `Employees without department: ${employeesWithoutDepartment
+        .map((employee) => employee.name)
+        .join(", ")}`,
+    );
+  }
+
+  console.log("Employees:");
+
+  employees.forEach(
+    (employee, index) => {
+      console.log(
+        `${index + 1}. ${employee.name} | ${employee.designation} | ${employee.team} | ${employee.department}`,
+      );
+    },
+  );
+
+  console.log("");
+  console.log("Projects:");
+
+  projects.forEach(
+    (project, index) => {
+      console.log(
+        `${index + 1}. ${project.jobCode} | ${project.name} | ${project.projectType}`,
+      );
+    },
+  );
+
+  if (!applyChanges) {
+    console.log("");
+    console.log("DRY RUN ONLY.");
+    console.log(
+      "No database changes were made.",
+    );
+    console.log("");
+    console.log(
+      "Run again with --apply after checking the above data.",
+    );
+
+    return;
+  }
+
+  const { db } =
+    await import("../lib/db");
+
+  const client =
+    await db.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * Current Team Alignment.xlsx is the
+     * source of truth for active employees.
+     */
+    await client.query(
       `
-      SELECT COUNT(*)::integer AS count
-        FROM members
-       WHERE is_active = TRUE
+      UPDATE members
+         SET is_active = FALSE,
+             current_department_id = NULL
       `,
     );
 
-    const projectCount = await client.query<{
-      count: number;
-    }>(
-      `
-      SELECT COUNT(*)::integer AS count
-        FROM projects
-       WHERE is_active = TRUE
-      `,
+    for (const employee of employees) {
+      await syncEmployee(
+        client,
+        employee,
+      );
+    }
+
+    await syncProjects(
+      client,
+      projects,
     );
 
-    if (employeeCount.rows[0].count !== 47) {
+    const employeeValidation =
+      await client.query<{
+        total: number;
+        missing_department: number;
+      }>(
+        `
+        SELECT
+          COUNT(*)::integer AS total,
+          (
+            COUNT(*) FILTER (
+              WHERE current_department_id IS NULL
+            )
+          )::integer AS missing_department
+          FROM members
+         WHERE is_active = TRUE
+        `,
+      );
+
+    const projectValidation =
+      await client.query<{
+        total: number;
+      }>(
+        `
+        SELECT
+          COUNT(*)::integer AS total
+          FROM projects
+         WHERE is_active = TRUE
+        `,
+      );
+
+    if (
+      employeeValidation.rows[0].total !== 47
+    ) {
       throw new Error(
-        `Database validation failed: expected 47 active employees, got ${employeeCount.rows[0].count}`,
+        `Database validation failed: expected 47 active employees, got ${employeeValidation.rows[0].total}`,
       );
     }
 
-    if (projectCount.rows[0].count !== 40) {
+    if (
+      employeeValidation.rows[0]
+        .missing_department !== 0
+    ) {
       throw new Error(
-        `Database validation failed: expected 40 active projects, got ${projectCount.rows[0].count}`,
+        `Database validation failed: ${employeeValidation.rows[0].missing_department} active employees have no current department.`,
       );
     }
+
+    if (
+      projectValidation.rows[0].total !== 40
+    ) {
+      throw new Error(
+        `Database validation failed: expected 40 active projects, got ${projectValidation.rows[0].total}`,
+      );
+    }
+
+    const departmentCounts =
+      await client.query<{
+        name: string;
+        count: number;
+      }>(
+        `
+        SELECT
+          d.name,
+          COUNT(m.id)::integer AS count
+          FROM departments d
+          JOIN members m
+            ON m.current_department_id = d.id
+           AND m.is_active = TRUE
+         GROUP BY d.id, d.name
+         ORDER BY d.name
+        `,
+      );
 
     await client.query("COMMIT");
 
     console.log("");
-    console.log("===================================");
+    console.log(
+      "===================================",
+    );
     console.log("SYNC COMPLETED");
-    console.log("===================================");
     console.log(
-      `Active employees: ${employeeCount.rows[0].count}`,
+      "===================================",
     );
+
     console.log(
-      `Active projects: ${projectCount.rows[0].count}`,
+      `Active employees: ${employeeValidation.rows[0].total}`,
     );
+
+    console.log(
+      `Active projects: ${projectValidation.rows[0].total}`,
+    );
+
+    console.log("");
+    console.log(
+      "Current department counts:",
+    );
+
+    for (
+      const department
+      of departmentCounts.rows
+    ) {
+      console.log(
+        `${department.name}: ${department.count}`,
+      );
+    }
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -683,7 +823,10 @@ async function run(): Promise<void> {
 
 run().catch((error) => {
   console.error("");
-  console.error("MASTER SYNC FAILED:");
+  console.error(
+    "MASTER SYNC FAILED:",
+  );
   console.error(error);
+
   process.exitCode = 1;
 });

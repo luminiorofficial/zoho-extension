@@ -25,6 +25,7 @@ interface MemberRow extends QueryResultRow {
   email: string | null;
   role_title: string | null;
   team: string | null;
+  current_department_id: string | null;
   is_active: boolean;
 }
 
@@ -131,7 +132,7 @@ export async function getStructureData(): Promise<StructureData> {
         ORDER BY d.source_sheet NULLS LAST, d.source_row NULLS LAST, d.name`,
     ),
     db.query<MemberRow>(
-      `SELECT id, name, email, role_title, team, is_active
+      `SELECT id, name, email, role_title, team, current_department_id, is_active
          FROM members
         ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name`,
     ),
@@ -187,25 +188,34 @@ export async function getStructureData(): Promise<StructureData> {
     ),
   ]);
 
-  const departmentIdsByMember = new Map<string, string[]>();
+  // Current organisation structure is based ONLY on members.current_department_id.
+  // Historical department_members rows are preserved for old goals/plans/tasks.
   const memberIdsByDepartment = new Map<string, string[]>();
-  for (const membership of departmentMemberResult.rows) {
-    appendToMap(departmentIdsByMember, membership.member_id, membership.department_id);
-    appendToMap(memberIdsByDepartment, membership.department_id, membership.member_id);
+  const currentDepartmentByMember = new Map<string, string>();
+
+  for (const member of memberResult.rows) {
+    if (!member.current_department_id) continue;
+
+    currentDepartmentByMember.set(member.id, member.current_department_id);
+
+    if (member.is_active) {
+      appendToMap(memberIdsByDepartment, member.current_department_id, member.id);
+    }
   }
 
   const members: Member[] = memberResult.rows.map((member) => {
-    const departmentIds = departmentIdsByMember.get(member.id) ?? [];
+    const currentDepartmentId = member.current_department_id ?? '';
+
     return {
-  id: member.id,
-  name: member.name,
-  email: member.email ?? '—',
-  role: member.role_title ?? '—',
-  team: member.team ?? '—',
-  departmentId: departmentIds[0] ?? '',
-  departmentIds,
-  isActive: member.is_active,
-};
+      id: member.id,
+      name: member.name,
+      email: member.email ?? '—',
+      role: member.role_title ?? '—',
+      team: member.team ?? '—',
+      departmentId: currentDepartmentId,
+      departmentIds: currentDepartmentId ? [currentDepartmentId] : [],
+      isActive: member.is_active,
+    };
   });
 
   const targetRowsByGoal = new Map<string, TargetRow[]>();
@@ -285,14 +295,19 @@ export async function getStructureData(): Promise<StructureData> {
       ? Math.round(goals.reduce((total, goal) => total + goal.progress, 0) / goals.length)
       : 0;
 
+    const currentHead = departmentMemberResult.rows.find(
+      (membership) =>
+        membership.department_id === department.id &&
+        membership.is_department_head &&
+        currentDepartmentByMember.get(membership.member_id) === department.id,
+    );
+
     return {
       id: department.id,
       name: department.name,
       description: department.description ?? undefined,
       memberIds: memberIdsByDepartment.get(department.id) ?? [],
-      headId: departmentMemberResult.rows.find(
-        (membership) => membership.department_id === department.id && membership.is_department_head,
-      )?.member_id,
+      headId: currentHead?.member_id,
       progress: department.progress_percent === null
         ? goalProgress
         : Math.round(Number(department.progress_percent)),
