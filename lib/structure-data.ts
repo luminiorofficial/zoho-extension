@@ -123,13 +123,17 @@ export async function getStructureData(): Promise<StructureData> {
   ] = await Promise.all([
     db.query<DepartmentRow>(
       `SELECT d.id,
-              d.name,
-              d.description,
-              d.is_active,
-              dwp.progress_percent
-         FROM departments d
-         LEFT JOIN department_work_progress dwp ON dwp.department_id = d.id
-        ORDER BY d.source_sheet NULLS LAST, d.source_row NULLS LAST, d.name`,
+        d.name,
+        d.description,
+        d.is_active,
+        dwp.progress_percent
+   FROM departments d
+   LEFT JOIN department_work_progress dwp
+     ON dwp.department_id = d.id
+  WHERE d.is_active = TRUE
+  ORDER BY d.source_sheet NULLS LAST,
+           d.source_row NULLS LAST,
+           d.name`,
     ),
     db.query<MemberRow>(
       `SELECT id, name, email, role_title, team, current_department_id, is_active

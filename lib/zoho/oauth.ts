@@ -1,3 +1,5 @@
+import 'server-only';
+
 const ZOHO_SCOPES = [
   'ZohoProjects.portals.READ',
   'ZohoProjects.projects.READ',
@@ -57,7 +59,6 @@ export interface ZohoTokenResponse {
   api_domain?: string;
   token_type?: string;
   expires_in?: number;
-
   error?: string;
 }
 
@@ -99,6 +100,49 @@ export async function exchangeZohoCode(
     throw new Error(
       data.error ??
         `Zoho token request failed (${response.status}).`,
+    );
+  }
+
+  return data;
+}
+
+export async function refreshZohoAccessToken(
+  refreshToken: string,
+): Promise<ZohoTokenResponse> {
+  const config = getZohoConfig();
+
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch(
+    `${config.accountsUrl}/oauth/v2/token`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type':
+          'application/x-www-form-urlencoded',
+      },
+      body,
+      cache: 'no-store',
+    },
+  );
+
+  const data =
+    (await response.json()) as ZohoTokenResponse;
+
+  if (!response.ok || !data.access_token) {
+    console.error(
+      'Zoho refresh token request failed:',
+      data.error ?? response.statusText,
+    );
+
+    throw new Error(
+      data.error ??
+        `Could not refresh Zoho access token (${response.status}).`,
     );
   }
 
