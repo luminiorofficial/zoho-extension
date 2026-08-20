@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
 import { Geist } from 'next/font/google';
+
+import NavigationLoader from '@/components/common/NavigationLoader';
+
 import './globals.css';
 
 const geist = Geist({
@@ -8,7 +11,8 @@ const geist = Geist({
 
 export const metadata: Metadata = {
   title: 'Department Goal Manager',
-  description: 'Department, goal and task management extension for Zoho Projects',
+  description:
+    'Department, goal and task management extension for Zoho Projects',
 };
 
 export default function RootLayout({
@@ -19,6 +23,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={geist.className}>
+        <NavigationLoader />
+
         {children}
       </body>
     </html>
