@@ -10,9 +10,11 @@ import {
   ProgressBar,
   ProjectPanel,
 } from '@/components';
+import { ZohoDepartmentWorkPanel } from '@/components/zoho/ZohoRelationshipPanels';
 import { getStructureData } from '@/lib/structure-data';
 import { getDepartmentWorkData } from '@/lib/work-data';
 import { getDepartmentAttendanceToday } from '@/lib/attendance-data';
+import { getZohoDepartmentRelationshipState } from '@/lib/zoho/relationship-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,16 +28,20 @@ export default async function DepartmentPage({
   params,
 }: DepartmentPageProps) {
   const { id } = await params;
-  const [{ departments, members }, work, attendance] = await Promise.all([
+
+  const [
+    { departments, members },
+    work,
+    attendance,
+    zohoRelationship,
+  ] = await Promise.all([
     getStructureData(),
     getDepartmentWorkData(id),
     getDepartmentAttendanceToday(id),
+    getZohoDepartmentRelationshipState(id),
   ]);
 
-  const department =
-    departments.find(
-      (item) => item.id === id
-    );
+  const department = departments.find((item) => item.id === id);
 
   if (!department) {
     notFound();
@@ -43,58 +49,33 @@ export default async function DepartmentPage({
 
   return (
     <Layout>
-
       <div className="mb-8">
-
-        <h1 className="text-2xl font-bold text-slate-900">
-          {department.name}
-        </h1>
-
-        <p className="mt-1 text-sm text-slate-500">
-          {department.description}
-        </p>
-
+        <h1 className="text-2xl font-bold text-slate-900">{department.name}</h1>
+        <p className="mt-1 text-sm text-slate-500">{department.description}</p>
       </div>
 
       <div className="grid gap-5 md:grid-cols-3">
-
         <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">
-            Members
-          </p>
-
-          <p className="mt-2 text-2xl font-bold">
-            {department.memberIds.length}
-          </p>
+          <p className="text-sm text-slate-500">Members</p>
+          <p className="mt-2 text-2xl font-bold">{department.memberIds.length}</p>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">
-            Goals
-          </p>
-
-          <p className="mt-2 text-2xl font-bold">
-            {department.goals.length}
-          </p>
+          <p className="text-sm text-slate-500">Goals</p>
+          <p className="mt-2 text-2xl font-bold">{department.goals.length}</p>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-500">
-            Progress
-          </p>
-
-          <p className="mt-2 text-2xl font-bold">
-            {department.progress}%
-          </p>
-
+          <p className="text-sm text-slate-500">Progress</p>
+          <p className="mt-2 text-2xl font-bold">{department.progress}%</p>
           <div className="mt-3">
-            <ProgressBar
-              value={department.progress}
-              size="sm"
-            />
+            <ProgressBar value={department.progress} size="sm" />
           </div>
         </div>
+      </div>
 
+      <div className="mt-8">
+        <ZohoDepartmentWorkPanel state={zohoRelationship} />
       </div>
 
       <div className="mt-8">
@@ -103,12 +84,10 @@ export default async function DepartmentPage({
 
       <div className="mt-8">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Current Progress
-          </h2>
-
+          <h2 className="text-lg font-semibold text-slate-900">Current Progress</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Daily tasks roll up automatically into weekly, monthly, financial-quarter, and April–March financial-year progress.
+            Daily tasks roll up automatically into weekly, monthly, financial-quarter,
+            and April–March financial-year progress.
           </p>
         </div>
 
@@ -122,11 +101,13 @@ export default async function DepartmentPage({
       <div className="mt-8">
         <ProjectPanel
           departmentId={department.id}
-          goals={department.isActive
-            ? department.goals
-                .filter((goal) => goal.isActive !== false)
-                .map((goal) => ({ id: goal.id, title: goal.title }))
-            : []}
+          goals={
+            department.isActive
+              ? department.goals
+                  .filter((goal) => goal.isActive !== false)
+                  .map((goal) => ({ id: goal.id, title: goal.title }))
+              : []
+          }
           initialProjects={work.projects}
         />
       </div>
@@ -145,7 +126,6 @@ export default async function DepartmentPage({
           weekGoals={work.weekGoals}
         />
       </div>
-
     </Layout>
   );
 }
