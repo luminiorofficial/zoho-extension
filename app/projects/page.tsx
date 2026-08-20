@@ -1,60 +1,168 @@
-import { Layout } from '@/components';
-import ProjectsClient from '@/components/projects/ProjectsClient';
-import { ZohoProjectMappingOverviewPanel } from '@/components/zoho/ZohoRelationshipPanels';
-import { getStructureData } from '@/lib/structure-data';
-import { getProjects } from '@/lib/work-data';
-import { getMemberWorkloads } from '@/lib/workload-data';
-import { getZohoProjectMappingOverviewState } from '@/lib/zoho/relationship-data';
+import {
+  Suspense,
+} from 'react';
 
-export const dynamic = 'force-dynamic';
+import {
+  Layout,
+} from '@/components';
+
+import ProjectsClient
+  from '@/components/projects/ProjectsClient';
+
+import {
+  AsyncZohoProjectMappingOverviewPanel,
+  ZohoPanelSkeleton,
+} from '@/components/zoho/AsyncZohoProjectPanels';
+
+import {
+  getProjectPageContext,
+} from '@/lib/project-detail-data';
+
+import {
+  getProjects,
+} from '@/lib/work-data';
+
+import {
+  getMemberWorkloads,
+} from '@/lib/workload-data';
+
+export const dynamic =
+  'force-dynamic';
 
 export default async function ProjectsPage({
   searchParams,
 }: PageProps<'/projects'>) {
-  const query = await searchParams;
+  const query =
+    await searchParams;
 
   const initialDepartmentId =
-    typeof query.department === 'string' ? query.department : undefined;
+    typeof query.department ===
+    'string'
+      ? query.department
+      : undefined;
 
-  const [projects, structure, workloads, zohoMappingOverview] = await Promise.all([
-    getProjects(null, null),
-    getStructureData(),
-    getMemberWorkloads(),
-    getZohoProjectMappingOverviewState(),
+  /* =======================================================
+   * No getStructureData().
+   *
+   * That old function also loaded:
+   *
+   * targets
+   * actions
+   * action assignees
+   * department progress
+   *
+   * None of that is required to display/create projects.
+   * ===================================================== */
+
+  const [
+    projects,
+    pageContext,
+  ] = await Promise.all([
+    getProjects(
+      null,
+      null,
+    ),
+
+    getProjectPageContext(),
   ]);
 
-  const workloadsByMember = new Map(
-    workloads.map((workload) => [workload.memberId, workload]),
-  );
+  /* =======================================================
+   * Only active members.
+   * ===================================================== */
 
-  const departments = structure.departments
-    .filter((department) => department.isActive)
-    .map((department) => ({
-      id: department.id,
-      name: department.name,
-      goals: department.goals
-        .filter((goal) => goal.isActive !== false)
-        .map((goal) => ({ id: goal.id, title: goal.title })),
-      members: department.memberIds.flatMap((id) => {
-        const workload = workloadsByMember.get(id);
-        return workload ? [workload] : [];
+  const workloads =
+    await getMemberWorkloads(
+      pageContext.activeMemberIds,
+    );
+
+  const workloadsByMember =
+    new Map(
+      workloads.map(
+        (workload) => [
+          workload.memberId,
+          workload,
+        ],
+      ),
+    );
+
+  const departments =
+    pageContext.departments.map(
+      (department) => ({
+        id:
+          department.id,
+
+        name:
+          department.name,
+
+        goals:
+          department.goals.map(
+            (goal) => ({
+              id:
+                goal.id,
+
+              title:
+                goal.title,
+            }),
+          ),
+
+        members:
+          department.memberIds.flatMap(
+            (memberId) => {
+              const workload =
+                workloadsByMember.get(
+                  memberId,
+                );
+
+              return workload
+                ? [
+                    workload,
+                  ]
+                : [];
+            },
+          ),
       }),
-    }));
+    );
 
   return (
     <Layout>
+      {/* =================================================
+       * This used to block the Projects page.
+       *
+       * Now Zoho loads separately.
+       * =============================================== */}
+
       <div className="mb-7">
-        <ZohoProjectMappingOverviewPanel state={zohoMappingOverview} />
+        <Suspense
+          fallback={
+            <ZohoPanelSkeleton
+              title="Checking Zoho project mappings…"
+            />
+          }
+        >
+          <AsyncZohoProjectMappingOverviewPanel />
+        </Suspense>
       </div>
 
       <ProjectsClient
-        projects={projects}
-        departments={departments}
-        members={structure.members
-          .filter((member) => member.isActive !== false)
-          .map(({ id, name }) => ({ id, name }))}
-        initialDepartmentId={initialDepartmentId}
-        openCreateInitially={query.new === '1'}
+        projects={
+          projects
+        }
+
+        departments={
+          departments
+        }
+
+        members={
+          pageContext.members
+        }
+
+        initialDepartmentId={
+          initialDepartmentId
+        }
+
+        openCreateInitially={
+          query.new === '1'
+        }
       />
     </Layout>
   );

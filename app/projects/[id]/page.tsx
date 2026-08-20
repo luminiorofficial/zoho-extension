@@ -1,14 +1,34 @@
-import { notFound } from 'next/navigation';
+import {
+  Suspense,
+} from 'react';
 
-import { Layout } from '@/components';
-import ProjectDetailClient from '@/components/projects/ProjectDetailClient';
-import { ZohoProjectMembersPanel } from '@/components/zoho/ZohoRelationshipPanels';
-import { getStructureData } from '@/lib/structure-data';
-import { getProjectDetail } from '@/lib/work-data';
-import { getMemberWorkloads } from '@/lib/workload-data';
-import { getZohoProjectRelationshipState } from '@/lib/zoho/relationship-data';
+import {
+  notFound,
+} from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
+import {
+  Layout,
+} from '@/components';
+
+import ProjectDetailClient
+  from '@/components/projects/ProjectDetailClient';
+
+import {
+  AsyncZohoProjectMembersPanel,
+  ZohoPanelSkeleton,
+} from '@/components/zoho/AsyncZohoProjectPanels';
+
+import {
+  getProjectDetailOptimized,
+  getProjectPageContext,
+} from '@/lib/project-detail-data';
+
+import {
+  getMemberWorkloads,
+} from '@/lib/workload-data';
+
+export const dynamic =
+  'force-dynamic';
 
 export default async function ProjectDetailPage({
   params,
@@ -18,57 +38,112 @@ export default async function ProjectDetailPage({
     embed?: string;
   }>;
 }) {
-  const { id } = await params;
-  const query = await searchParams;
+  const {
+    id,
+  } = await params;
 
-  const isZohoEmbed = query.embed === 'zoho';
+  const query =
+    await searchParams;
 
-  const [project, structure, workloads, zohoRelationship] =
-    await Promise.all([
-      getProjectDetail(id),
-      getStructureData(),
-      getMemberWorkloads(),
-      getZohoProjectRelationshipState(id),
-    ]);
+  const isZohoEmbed =
+    query.embed === 'zoho';
+
+  /* =======================================================
+   * IMPORTANT:
+   *
+   * We no longer call:
+   *
+   * getStructureData()
+   *
+   * and we no longer fetch Zoho here.
+   *
+   * The local project data can therefore finish without
+   * waiting for the expensive Zoho relationship snapshot.
+   * ===================================================== */
+
+  const [
+    project,
+    pageContext,
+  ] = await Promise.all([
+    getProjectDetailOptimized(
+      id,
+    ),
+
+    getProjectPageContext(),
+  ]);
 
   if (!project) {
     notFound();
   }
 
-  const activeMemberIds = new Set(
-    structure.members
-      .filter((member) => member.isActive !== false)
-      .map((member) => member.id),
-  );
+  /* =======================================================
+   * Only calculate workloads for active members.
+   *
+   * workload-query.ts now also applies this member filter
+   * inside its expensive CTE calculations.
+   * ===================================================== */
 
-  const allActiveMembers = workloads.filter((workload) =>
-    activeMemberIds.has(workload.memberId),
-  );
+  const allActiveMembers =
+    await getMemberWorkloads(
+      pageContext.activeMemberIds,
+    );
 
-  const departments = structure.departments
-    .filter((department) => department.isActive)
-    .map((department) => ({
-      id: department.id,
-      name: department.name,
-      goals: department.goals
-        .filter((goal) => goal.isActive !== false)
-        .map((goal) => ({
-          id: goal.id,
-          title: goal.title,
-          code: goal.code,
-        })),
-    }));
+  const departments =
+    pageContext.departments.map(
+      (department) => ({
+        id:
+          department.id,
+
+        name:
+          department.name,
+
+        goals:
+          department.goals.map(
+            (goal) => ({
+              id:
+                goal.id,
+
+              title:
+                goal.title,
+
+              code:
+                goal.code,
+            }),
+          ),
+      }),
+    );
 
   const content = (
     <>
       <ProjectDetailClient
         project={project}
-        departmentMembers={allActiveMembers}
-        departments={departments}
+        departmentMembers={
+          allActiveMembers
+        }
+        departments={
+          departments
+        }
       />
 
+      {/* =================================================
+       * Zoho loads independently.
+       *
+       * If Zoho takes 3 seconds, the local project page
+       * no longer needs to wait those 3 seconds.
+       * =============================================== */}
+
       <div className="mt-8">
-        <ZohoProjectMembersPanel state={zohoRelationship} />
+        <Suspense
+          fallback={
+            <ZohoPanelSkeleton
+              title="Loading live Zoho project members and tasks…"
+            />
+          }
+        >
+          <AsyncZohoProjectMembersPanel
+            projectId={id}
+          />
+        </Suspense>
       </div>
     </>
   );
@@ -83,5 +158,9 @@ export default async function ProjectDetailPage({
     );
   }
 
-  return <Layout>{content}</Layout>;
+  return (
+    <Layout>
+      {content}
+    </Layout>
+  );
 }
