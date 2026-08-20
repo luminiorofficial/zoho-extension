@@ -40,15 +40,14 @@ export function getZohoAuthorizationUrl(
 ): string {
   const config = getZohoConfig();
 
-  const params = new URLSearchParams({
-    scope: config.scopes,
-    client_id: config.clientId,
-    response_type: 'code',
-    access_type: 'offline',
-    redirect_uri: config.redirectUri,
-    prompt: 'consent',
-    state,
-  });
+ const params = new URLSearchParams({
+  scope: config.scopes,
+  client_id: config.clientId,
+  response_type: 'code',
+  access_type: 'offline',
+  redirect_uri: config.redirectUri,
+  state,
+});
 
   return `${config.accountsUrl}/oauth/v2/auth?${params.toString()}`;
 }
