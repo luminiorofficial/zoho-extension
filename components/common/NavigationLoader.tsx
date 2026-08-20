@@ -15,7 +15,7 @@ export default function NavigationLoader() {
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    function handleClick(event: MouseEvent) {
+    const handleClick = (event: MouseEvent) => {
       if (
         event.metaKey ||
         event.ctrlKey ||
@@ -25,11 +25,17 @@ export default function NavigationLoader() {
         return;
       }
 
-      const target = event.target as HTMLElement | null;
+      const target = event.target;
 
-      const link = target?.closest('a');
+      if (!(target instanceof Element)) {
+        return;
+      }
 
-      if (!link) return;
+      const link = target.closest('a');
+
+      if (!link) {
+        return;
+      }
 
       const href = link.getAttribute('href');
 
@@ -44,24 +50,48 @@ export default function NavigationLoader() {
         return;
       }
 
-      const url = new URL(link.href, window.location.href);
+      const url = new URL(
+        link.href,
+        window.location.href,
+      );
 
-      if (
-        url.origin === window.location.origin &&
-        url.href !== window.location.href
-      ) {
-        setLoading(true);
+      if (url.origin !== window.location.origin) {
+        return;
       }
-    }
 
-    document.addEventListener('click', handleClick, true);
+      const currentUrl =
+        window.location.pathname +
+        window.location.search;
+
+      const nextUrl =
+        url.pathname +
+        url.search;
+
+      if (currentUrl === nextUrl) {
+        return;
+      }
+
+      setLoading(true);
+    };
+
+    document.addEventListener(
+      'click',
+      handleClick,
+      true,
+    );
 
     return () => {
-      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener(
+        'click',
+        handleClick,
+        true,
+      );
     };
   }, []);
 
-  if (!loading) return null;
+  if (!loading) {
+    return null;
+  }
 
   return (
     <>
