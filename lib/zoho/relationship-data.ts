@@ -493,7 +493,7 @@ async function loadBaseContext(): Promise<BaseContext> {
         SELECT id, name
         FROM departments
         WHERE is_active = TRUE
-        ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name
+        ORDER BY name
         `,
       ),
       db.query<LocalMemberRow>(
@@ -511,7 +511,7 @@ async function loadBaseContext(): Promise<BaseContext> {
         FROM members m
         LEFT JOIN departments d
           ON d.id = m.current_department_id
-        ORDER BY m.source_sheet NULLS LAST, m.source_row NULLS LAST, m.name
+        ORDER BY d.name NULLS LAST, m.name
         `,
       ),
       db.query<LocalProjectRow>(
@@ -519,7 +519,7 @@ async function loadBaseContext(): Promise<BaseContext> {
         SELECT id, code, name, master_job_no
         FROM projects
         WHERE is_active = TRUE
-        ORDER BY source_sheet NULLS LAST, source_row NULLS LAST, name
+        ORDER BY name
         `,
       ),
       db.query<ProjectMappingRow>(
