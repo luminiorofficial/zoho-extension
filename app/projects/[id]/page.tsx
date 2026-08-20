@@ -12,15 +12,24 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProjectDetailPage({
   params,
-}: PageProps<'/projects/[id]'>) {
+  searchParams,
+}: PageProps<'/projects/[id]'> & {
+  searchParams: Promise<{
+    embed?: string;
+  }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
 
-  const [project, structure, workloads, zohoRelationship] = await Promise.all([
-    getProjectDetail(id),
-    getStructureData(),
-    getMemberWorkloads(),
-    getZohoProjectRelationshipState(id),
-  ]);
+  const isZohoEmbed = query.embed === 'zoho';
+
+  const [project, structure, workloads, zohoRelationship] =
+    await Promise.all([
+      getProjectDetail(id),
+      getStructureData(),
+      getMemberWorkloads(),
+      getZohoProjectRelationshipState(id),
+    ]);
 
   if (!project) {
     notFound();
@@ -50,8 +59,8 @@ export default async function ProjectDetailPage({
         })),
     }));
 
-  return (
-    <Layout>
+  const content = (
+    <>
       <ProjectDetailClient
         project={project}
         departmentMembers={allActiveMembers}
@@ -61,6 +70,18 @@ export default async function ProjectDetailPage({
       <div className="mt-8">
         <ZohoProjectMembersPanel state={zohoRelationship} />
       </div>
-    </Layout>
+    </>
   );
+
+  if (isZohoEmbed) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-5">
+        <div className="mx-auto max-w-7xl">
+          {content}
+        </div>
+      </main>
+    );
+  }
+
+  return <Layout>{content}</Layout>;
 }
