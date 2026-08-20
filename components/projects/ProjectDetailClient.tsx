@@ -17,6 +17,7 @@ import {
 import ProgressBar from '@/components/common/ProgressBar';
 import StatusBadge from '@/components/common/StatusBadge';
 import CapacityBadge from '@/components/workload/CapacityBadge';
+import ProjectTaskCreator from '@/components/projects/ProjectTaskCreator';
 
 import {
   getCapacityStatus,
@@ -1517,14 +1518,41 @@ export default function ProjectDetailClient({
       </div>
 
       <section className="mt-7">
-        <h2 className="mb-4 flex items-center gap-2 font-semibold text-slate-900">
-          <CalendarDays size={18} />
+  <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+        <CalendarDays size={18} />
 
-          Daily tasks and task
-          progress
-        </h2>
+        Daily tasks and task
+        progress
+      </h2>
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <p className="mt-1 text-sm text-slate-500">
+        Create and assign tasks
+        directly inside this project.
+      </p>
+    </div>
+
+    <ProjectTaskCreator
+      projectId={project.id}
+      projectName={project.name}
+      members={
+        project.memberIds.map(
+          (id, index) => ({
+            id,
+
+            name:
+              project.memberNames[
+                index
+              ]
+              ?? 'Team member',
+          }),
+        )
+      }
+    />
+  </div>
+
+  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
