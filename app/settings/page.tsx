@@ -31,16 +31,12 @@ export default function SettingsPage() {
         <section className="rounded-xl border border-slate-200 bg-white p-6">
 
           <h2 className="font-semibold text-slate-900">
-            Zoho Projects Integration
+            Project Activity
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Zoho authentication and API configuration will be added after the UI is finalised.
+            Project activity connection settings are managed by your administrator.
           </p>
-
-          <div className="mt-4 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-            Not Connected
-          </div>
 
         </section>
 

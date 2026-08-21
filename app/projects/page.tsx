@@ -1,18 +1,9 @@
 import {
-  Suspense,
-} from 'react';
-
-import {
   Layout,
 } from '@/components';
 
 import ProjectsClient
   from '@/components/projects/ProjectsClient';
-
-import {
-  AsyncZohoProjectMappingOverviewPanel,
-  ZohoPanelSkeleton,
-} from '@/components/zoho/AsyncZohoProjectPanels';
 
 import {
   getProjectPageContext,
@@ -125,24 +116,6 @@ export default async function ProjectsPage({
 
   return (
     <Layout>
-      {/* =================================================
-       * This used to block the Projects page.
-       *
-       * Now Zoho loads separately.
-       * =============================================== */}
-
-      <div className="mb-7">
-        <Suspense
-          fallback={
-            <ZohoPanelSkeleton
-              title="Checking Zoho project mappings…"
-            />
-          }
-        >
-          <AsyncZohoProjectMappingOverviewPanel />
-        </Suspense>
-      </div>
-
       <ProjectsClient
         projects={
           projects

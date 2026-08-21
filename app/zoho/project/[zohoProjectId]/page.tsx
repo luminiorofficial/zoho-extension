@@ -122,26 +122,11 @@ export default async function ZohoProjectBridgePage({
 
           <div>
             <h1 className="text-xl font-semibold text-slate-900">
-              Project mapping required
+              Project activity is not available
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              This Zoho project has not yet been permanently mapped
-              to a local CRM project.
-            </p>
-
-            <div className="mt-4 rounded-lg bg-slate-50 px-4 py-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                Zoho Project ID
-              </p>
-
-              <p className="mt-1 font-mono text-sm text-slate-700">
-                {zohoProjectId}
-              </p>
-            </div>
-
-            <p className="mt-4 text-xs text-slate-500">
-              No Zoho write operation was attempted.
+              This project is not available in the workspace yet.
             </p>
           </div>
         </div>

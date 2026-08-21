@@ -114,22 +114,6 @@ export default function Sidebar() {
           </div>
         </nav>
 
-        <div className="border-t border-slate-200 p-4">
-          <div className="rounded-lg bg-slate-50 p-3">
-            <p className="text-xs font-medium text-slate-500">
-              Integration Status
-            </p>
-
-            <div className="mt-2 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-amber-500" />
-
-              <span className="text-sm text-slate-700">
-                Zoho not connected
-              </span>
-            </div>
-          </div>
-        </div>
-
       </div>
     </aside>
   );

@@ -660,7 +660,7 @@ export default async function MemberPage({
                   text-slate-500
                 "
               >
-                Zoho Projects
+                Project Activity
               </p>
 
               <p
@@ -690,17 +690,17 @@ export default async function MemberPage({
 
       <div className="space-y-4">
         {/* ===============================================
-         * ZOHO PROJECTS
+         * PROJECT ACTIVITY
          * ============================================= */}
 
         <AccordionSection
           title={
             zohoProjectCount !== null
-              ? `Zoho Projects (${zohoProjectCount})`
-              : 'Zoho Projects'
+              ? `Project Activity (${zohoProjectCount})`
+              : 'Project Activity'
           }
           description="
-            Projects and assignments coming from Zoho Projects.
+            Projects, tasks and progress for this member.
           "
         >
           <ZohoMemberProjectsPanel
