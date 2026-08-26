@@ -102,3 +102,48 @@ export async function PATCH(
     return Response.json({ error: 'Could not update the weekly goal.' }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  context: RouteContext<'/api/week-goals/[id]'>,
+) {
+  const { id } = await context.params;
+  if (!isUuid(id)) {
+    return Response.json({ error: 'Invalid weekly goal id.' }, { status: 400 });
+  }
+
+  try {
+    const result = await db.query<{
+      id: string;
+      assignedMemberId: string;
+      departmentId: string;
+      projectId: string;
+    }>(
+      `DELETE FROM week_goals
+        WHERE id = $1
+          AND week_start = DATE_TRUNC('week', CURRENT_DATE)::date
+      RETURNING id,
+                assigned_member_id AS "assignedMemberId",
+                department_id AS "departmentId",
+                project_id AS "projectId"`,
+      [id],
+    );
+
+    const weekGoal = result.rows[0];
+    if (!weekGoal) {
+      return Response.json({ error: 'Current-week goal not found.' }, { status: 404 });
+    }
+
+    revalidatePath(`/members/${weekGoal.assignedMemberId}`);
+    revalidatePath(`/departments/${weekGoal.departmentId}`);
+    revalidatePath(`/projects/${weekGoal.projectId}`);
+    revalidatePath('/projects');
+    revalidatePath('/workload');
+    revalidatePath('/dashboard');
+
+    return Response.json({ deletedWeekGoalId: weekGoal.id });
+  } catch (error) {
+    console.error('Could not delete weekly goal:', error);
+    return Response.json({ error: 'Could not delete the weekly goal.' }, { status: 500 });
+  }
+}

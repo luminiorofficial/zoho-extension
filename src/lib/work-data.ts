@@ -85,6 +85,7 @@ interface TaskRow extends QueryResultRow {
     id: string;
     taskId: string;
     title: string;
+    status: ActionStatus;
   }[];
 }
 
@@ -578,7 +579,13 @@ async function getWeekGoals(
               JSONB_BUILD_OBJECT(
                 'id', ta.id,
                 'taskId', ta.task_id,
-                'title', ta.title
+                'title', ta.title,
+                'status', CASE ta.status
+                  WHEN 'DONE' THEN 'Done'
+                  WHEN 'IN_PROGRESS' THEN 'In Progress'
+                  WHEN 'STARTED' THEN 'Started'
+                  ELSE 'Not Started'
+                END
               )
               ORDER BY ta.created_at, ta.id
             )

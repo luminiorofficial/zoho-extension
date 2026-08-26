@@ -309,6 +309,7 @@ export interface TaskAction {
   id: string;
   taskId: string;
   title: string;
+  status: ActionStatus;
 }
 
 export interface WeekGoal {

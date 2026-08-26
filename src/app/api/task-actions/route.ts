@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       id: string;
       taskId: string;
       title: string;
+      status: string;
       memberId: string;
       departmentId: string;
       projectId: string;
@@ -41,11 +42,17 @@ export async function POST(request: Request) {
            FROM tasks t
           WHERE t.id = $1
             AND t.week_start = DATE_TRUNC('week', CURRENT_DATE)::date
-         RETURNING id, task_id, title
+         RETURNING id, task_id, title, status
        )
        SELECT inserted.id,
               inserted.task_id AS "taskId",
               inserted.title,
+              CASE inserted.status
+                WHEN 'DONE' THEN 'Done'
+                WHEN 'IN_PROGRESS' THEN 'In Progress'
+                WHEN 'STARTED' THEN 'Started'
+                ELSE 'Not Started'
+              END AS status,
               t.assigned_member_id AS "memberId",
               wg.department_id AS "departmentId",
               t.project_id AS "projectId"
@@ -73,6 +80,7 @@ export async function POST(request: Request) {
           id: taskAction.id,
           taskId: taskAction.taskId,
           title: taskAction.title,
+          status: taskAction.status,
         },
       },
       { status: 201 },

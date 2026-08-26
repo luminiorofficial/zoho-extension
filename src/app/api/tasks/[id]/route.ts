@@ -72,7 +72,8 @@ export async function PATCH(
       const weekResult = await db.query<{ is_in_week: boolean }>(
         `SELECT $2::date BETWEEN week_start AND week_start + 4 AS is_in_week
            FROM tasks
-          WHERE id = $1`,
+          WHERE id = $1
+            AND week_start = DATE_TRUNC('week', CURRENT_DATE)::date`,
         [id, payload.taskDate],
       );
 
@@ -92,6 +93,7 @@ export async function PATCH(
          UPDATE tasks
             SET ${changes.join(', ')}
           WHERE id = $1
+            AND week_start = DATE_TRUNC('week', CURRENT_DATE)::date
           RETURNING *
        )
        SELECT t.id,
@@ -133,8 +135,17 @@ export async function PATCH(
       id: string;
       taskId: string;
       title: string;
+      status: string;
     }>(
-      `SELECT id, task_id AS "taskId", title
+      `SELECT id,
+              task_id AS "taskId",
+              title,
+              CASE status
+                WHEN 'DONE' THEN 'Done'
+                WHEN 'IN_PROGRESS' THEN 'In Progress'
+                WHEN 'STARTED' THEN 'Started'
+                ELSE 'Not Started'
+              END AS status
          FROM task_actions
         WHERE task_id = $1
         ORDER BY created_at, id`,
@@ -173,6 +184,7 @@ export async function DELETE(
       `WITH deleted AS (
          DELETE FROM tasks
           WHERE id = $1
+            AND week_start = DATE_TRUNC('week', CURRENT_DATE)::date
           RETURNING id, week_goal_id, assigned_member_id
        )
        SELECT d.id,

@@ -8,6 +8,7 @@ import {
   ListChecks,
   Pencil,
   Plus,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -60,6 +61,12 @@ export default function GoalTaskHierarchy({
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editGoalTitle, setEditGoalTitle] = useState('');
   const [editGoalDescription, setEditGoalDescription] = useState('');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState('');
+  const [editTaskDate, setEditTaskDate] = useState('');
+  const [editTaskStatus, setEditTaskStatus] = useState('NOT_STARTED');
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editActionTitle, setEditActionTitle] = useState('');
 
   const currentWeekStart = isoWeekStart(today());
 
@@ -100,6 +107,35 @@ export default function GoalTaskHierarchy({
       router.refresh();
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : 'Could not update the weekly goal.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function deleteGoal(event: MouseEvent, goal: WeekGoal) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const taskCount = Math.max(goal.totalTasks, goal.tasks.length);
+    const message = taskCount > 0
+      ? `Delete “${goal.title}”? It contains ${taskCount} task${taskCount === 1 ? '' : 's'}. All of those tasks and their task actions will also be permanently deleted.`
+      : `Delete “${goal.title}”? This weekly goal will be permanently deleted.`;
+    if (!window.confirm(message)) return;
+
+    setPending(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/week-goals/${goal.id}`, { method: 'DELETE' });
+      const body = await response.json() as { deletedWeekGoalId?: string; error?: string };
+      if (!response.ok || !body.deletedWeekGoalId) {
+        throw new Error(body.error ?? 'Could not delete the weekly goal.');
+      }
+
+      setGoals((current) => current.filter((item) => item.id !== goal.id));
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the weekly goal.');
     } finally {
       setPending(false);
     }
@@ -180,6 +216,84 @@ export default function GoalTaskHierarchy({
     }
   }
 
+  function beginTaskEdit(task: DailyTask) {
+    setEditingTaskId(task.id);
+    setEditTaskTitle(task.title);
+    setEditTaskDate(task.taskDate);
+    setEditTaskStatus(databaseStatus(task.status));
+    setError('');
+  }
+
+  async function saveTask(task: DailyTask) {
+    setPending(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTaskTitle,
+          taskDate: editTaskDate,
+          status: editTaskStatus,
+        }),
+      });
+      const body = await response.json() as { task?: DailyTask; error?: string };
+      if (!response.ok || !body.task) {
+        throw new Error(body.error ?? 'Could not update the task.');
+      }
+
+      setGoals((current) => current.map((goal) => ({
+        ...goal,
+        tasks: goal.tasks.map((item) => (
+          item.id === task.id
+            ? { ...body.task as DailyTask, actions: body.task?.actions ?? item.actions }
+            : item
+        )),
+      })));
+      setEditingTaskId(null);
+      router.refresh();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Could not update the task.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function deleteTask(task: DailyTask) {
+    const actionWarning = task.actions.length > 0
+      ? ` Its ${task.actions.length} task action${task.actions.length === 1 ? '' : 's'} will also be permanently deleted.`
+      : '';
+    if (!window.confirm(`Delete task “${task.title}”?${actionWarning}`)) return;
+
+    setPending(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+      const body = await response.json() as { deletedTaskId?: string; error?: string };
+      if (!response.ok || !body.deletedTaskId) {
+        throw new Error(body.error ?? 'Could not delete the task.');
+      }
+
+      setGoals((current) => current.map((goal) => (
+        goal.tasks.some((item) => item.id === task.id)
+          ? {
+              ...goal,
+              totalTasks: Math.max(0, goal.totalTasks - 1),
+              doneTasks: Math.max(0, goal.doneTasks - (task.status === 'Done' ? 1 : 0)),
+              tasks: goal.tasks.filter((item) => item.id !== task.id),
+            }
+          : goal
+      )));
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the task.');
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function createAction(event: FormEvent<HTMLFormElement>, task: DailyTask) {
     event.preventDefault();
     setPending(true);
@@ -209,6 +323,67 @@ export default function GoalTaskHierarchy({
       router.refresh();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Could not create the action.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function updateAction(action: TaskAction, changes: { title?: string; status?: string }) {
+    setPending(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/task-actions/${action.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      const body = await response.json() as { taskAction?: TaskAction; error?: string };
+      if (!response.ok || !body.taskAction) {
+        throw new Error(body.error ?? 'Could not update the task action.');
+      }
+
+      setGoals((current) => current.map((goal) => ({
+        ...goal,
+        tasks: goal.tasks.map((task) => ({
+          ...task,
+          actions: task.actions.map((item) => (
+            item.id === action.id ? body.taskAction as TaskAction : item
+          )),
+        })),
+      })));
+      setEditingActionId(null);
+      router.refresh();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Could not update the task action.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function deleteAction(action: TaskAction) {
+    if (!window.confirm(`Delete task action “${action.title}”?`)) return;
+
+    setPending(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/task-actions/${action.id}`, { method: 'DELETE' });
+      const body = await response.json() as { deletedTaskActionId?: string; error?: string };
+      if (!response.ok || !body.deletedTaskActionId) {
+        throw new Error(body.error ?? 'Could not delete the task action.');
+      }
+
+      setGoals((current) => current.map((goal) => ({
+        ...goal,
+        tasks: goal.tasks.map((task) => ({
+          ...task,
+          actions: task.actions.filter((item) => item.id !== action.id),
+        })),
+      })));
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the task action.');
     } finally {
       setPending(false);
     }
@@ -254,14 +429,26 @@ export default function GoalTaskHierarchy({
 
               <div className="flex shrink-0 items-center gap-1">
                 {isCurrentWeek && (
-                  <button
-                    type="button"
-                    onClick={(event) => beginGoalEdit(event, goal)}
-                    aria-label={`Edit ${goal.title}`}
-                    className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-violet-600"
-                  >
-                    <Pencil size={15} />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={(event) => beginGoalEdit(event, goal)}
+                      aria-label={`Edit ${goal.title}`}
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-violet-600 disabled:opacity-50"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={(event) => void deleteGoal(event, goal)}
+                      aria-label={`Delete ${goal.title}`}
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </>
                 )}
                 <ChevronDown className="mt-1 h-5 w-5 text-slate-400 transition group-open:rotate-180" />
               </div>
@@ -376,20 +563,98 @@ export default function GoalTaskHierarchy({
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={task.status} size="sm" />
                         {isCurrentWeek && (
+                          <>
+                            <select
+                              aria-label={`Status for ${task.title}`}
+                              value={databaseStatus(task.status)}
+                              disabled={pending}
+                              onChange={(event) => void updateTaskStatus(task, event.target.value)}
+                              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                            >
+                              {statusOptions.map((status) => (
+                                <option key={status.value} value={status.value}>{status.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => beginTaskEdit(task)}
+                              aria-label={`Edit ${task.title}`}
+                              className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-blue-600 disabled:opacity-50"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => void deleteTask(task)}
+                              aria-label={`Delete ${task.title}`}
+                              className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {editingTaskId === task.id && (
+                      <div className="mt-3 grid gap-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                        <label className="text-xs font-medium text-slate-600">
+                          Task title
+                          <input
+                            autoFocus
+                            required
+                            maxLength={500}
+                            value={editTaskTitle}
+                            onChange={(event) => setEditTaskTitle(event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                        </label>
+                        <label className="text-xs font-medium text-slate-600">
+                          Date
+                          <input
+                            type="date"
+                            required
+                            min={goal.weekStart}
+                            max={goal.weekEnd}
+                            value={editTaskDate}
+                            onChange={(event) => setEditTaskDate(event.target.value)}
+                            className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                        </label>
+                        <label className="text-xs font-medium text-slate-600">
+                          Status
                           <select
-                            aria-label={`Status for ${task.title}`}
-                            value={databaseStatus(task.status)}
-                            disabled={pending}
-                            onChange={(event) => void updateTaskStatus(task, event.target.value)}
-                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                            value={editTaskStatus}
+                            onChange={(event) => setEditTaskStatus(event.target.value)}
+                            className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
                           >
                             {statusOptions.map((status) => (
                               <option key={status.value} value={status.value}>{status.label}</option>
                             ))}
                           </select>
-                        )}
+                        </label>
+                        <div className="flex gap-2 sm:col-span-3">
+                          <button
+                            type="button"
+                            disabled={pending || !editTaskTitle.trim() || !editTaskDate}
+                            onClick={() => void saveTask(task)}
+                            className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                          >
+                            <Check size={14} /> Save
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => setEditingTaskId(null)}
+                            className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
+                          >
+                            <X size={14} /> Cancel
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="mt-3 border-l border-slate-200 pl-4">
                       {isCurrentWeek && actionTaskId !== task.id && (
@@ -437,10 +702,84 @@ export default function GoalTaskHierarchy({
 
                       <div className="space-y-1.5">
                         {task.actions.map((action) => (
-                          <p key={action.id} className="flex items-start gap-2 text-sm text-slate-600">
-                            <CircleDot size={13} className="mt-1 shrink-0 text-violet-400" />
-                            {action.title}
-                          </p>
+                          <div key={action.id} className="rounded-lg border border-slate-100 bg-white p-2">
+                            {editingActionId === action.id ? (
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <input
+                                  autoFocus
+                                  required
+                                  maxLength={1000}
+                                  value={editActionTitle}
+                                  onChange={(event) => setEditActionTitle(event.target.value)}
+                                  aria-label={`Title for ${action.title}`}
+                                  className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-violet-500"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={pending || !editActionTitle.trim()}
+                                  onClick={() => void updateAction(action, { title: editActionTitle })}
+                                  className="flex items-center justify-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                                >
+                                  <Check size={14} /> Save
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={pending}
+                                  onClick={() => setEditingActionId(null)}
+                                  className="flex items-center justify-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600"
+                                >
+                                  <X size={14} /> Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                                <p className="flex min-w-0 items-start gap-2 text-sm text-slate-600">
+                                  <CircleDot size={13} className="mt-1 shrink-0 text-violet-400" />
+                                  <span className="break-words">{action.title}</span>
+                                </p>
+                                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                                  <StatusBadge status={action.status} size="sm" />
+                                  {isCurrentWeek && (
+                                    <>
+                                      <select
+                                        aria-label={`Status for ${action.title}`}
+                                        value={databaseStatus(action.status)}
+                                        disabled={pending}
+                                        onChange={(event) => void updateAction(action, { status: event.target.value })}
+                                        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-violet-500"
+                                      >
+                                        {statusOptions.map((status) => (
+                                          <option key={status.value} value={status.value}>{status.label}</option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() => {
+                                          setEditingActionId(action.id);
+                                          setEditActionTitle(action.title);
+                                          setError('');
+                                        }}
+                                        aria-label={`Edit ${action.title}`}
+                                        className="rounded-md p-1.5 text-slate-400 hover:bg-violet-50 hover:text-violet-600 disabled:opacity-50"
+                                      >
+                                        <Pencil size={13} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() => void deleteAction(action)}
+                                        aria-label={`Delete ${action.title}`}
+                                        className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         ))}
                         {!task.actions.length && (
                           <p className="text-xs text-slate-400">No actions yet.</p>
