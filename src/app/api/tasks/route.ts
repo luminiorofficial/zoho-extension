@@ -76,15 +76,9 @@ export async function POST(request: Request) {
          JOIN members m ON m.id = wg.assigned_member_id AND m.is_active
          JOIN goals g ON g.id = wg.goal_id AND g.is_active
          JOIN actions active_action ON active_action.id = wg.action_id AND active_action.is_active
-         JOIN action_assignees aa
-           ON aa.action_id = wg.action_id
-          AND aa.member_id = wg.assigned_member_id
          JOIN projects active_project
            ON active_project.id = wg.project_id
           AND active_project.status IN ('PLANNED', 'ACTIVE', 'INTERNAL_REVIEW', 'CLIENT_REVIEW')
-         JOIN project_members pm
-           ON pm.project_id = wg.project_id
-          AND pm.member_id = wg.assigned_member_id
          WHERE wg.id = $1
            AND wg.assigned_member_id = $2
            AND $5::date BETWEEN wg.week_start AND wg.week_start + 4

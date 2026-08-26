@@ -132,6 +132,16 @@ export async function POST(request: Request) {
 
     const projectId = result.rows[0].id;
     await client.query(
+      `INSERT INTO project_keys (project_id, key_goal_id)
+       SELECT $1, g.id
+       FROM goals g
+       WHERE g.department_id = $2
+         AND g.is_active
+         AND UPPER(BTRIM(g.code)) IN ('KEY_A', 'KEY_B', 'KEY_C')
+       ON CONFLICT DO NOTHING`,
+      [projectId, payload.departmentId],
+    );
+    await client.query(
       `INSERT INTO project_members (project_id, member_id)
        SELECT $1, UNNEST($2::uuid[])`,
       [projectId, assignedMemberIds],

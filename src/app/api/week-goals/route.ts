@@ -83,16 +83,9 @@ export async function POST(request: Request) {
          JOIN actions a
            ON a.goal_id = g.id
           AND a.is_active
-          AND UPPER(BTRIM(a.code)) = 'GENERAL'
-         JOIN action_assignees aa
-           ON aa.action_id = a.id
-          AND aa.member_id = $3
          JOIN department_members dm
            ON dm.department_id = p.department_id
           AND dm.member_id = $3
-         JOIN project_members pm
-           ON pm.project_id = p.id
-          AND pm.member_id = $3
          JOIN departments d
            ON d.id = p.department_id
           AND d.is_active
@@ -112,9 +105,6 @@ export async function POST(request: Request) {
          JOIN goals g
            ON g.id = a.goal_id
           AND g.is_active
-         JOIN action_assignees aa
-           ON aa.action_id = a.id
-          AND aa.member_id = $3
          JOIN projects p
            ON p.id = $2
           AND p.goal_id = a.goal_id
@@ -122,9 +112,6 @@ export async function POST(request: Request) {
          JOIN department_members dm
            ON dm.department_id = p.department_id
           AND dm.member_id = $3
-         JOIN project_members pm
-           ON pm.project_id = p.id
-          AND pm.member_id = $3
          JOIN departments d
            ON d.id = p.department_id
           AND d.is_active
@@ -149,6 +136,19 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    await client.query(
+      `INSERT INTO project_members (project_id, member_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [payload.projectId, payload.memberId],
+    );
+    await client.query(
+      `INSERT INTO action_assignees (action_id, member_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [hierarchy.action_id, payload.memberId],
+    );
 
     const weekPlanResult = await client.query(
       `INSERT INTO week_plans (department_id, member_id, week_start)

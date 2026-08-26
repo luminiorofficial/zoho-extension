@@ -1124,19 +1124,6 @@ export async function getDepartmentWorkData(
 export async function getMemberWorkData(
   memberId: string,
 ): Promise<MemberWorkData> {
-  /*
-   * Important:
-   *
-   * The member's project list already comes from
-   * project_members inside getProjects().
-   *
-   * Therefore we should NOT filter those projects again
-   * by action.goalId here.
-   *
-   * That additional filter was causing valid assigned
-   * projects to disappear from Weekly Planner and made
-   * "Add Weekly Goal" disabled for every member.
-   */
   const [
     projects,
     execution,
@@ -1144,7 +1131,7 @@ export async function getMemberWorkData(
   ] = await Promise.all([
     getProjects(
       null,
-      memberId,
+      null,
     ),
 
     getWeekGoals(
@@ -1158,13 +1145,7 @@ export async function getMemberWorkData(
     ),
   ]);
 
-  /*
-   * Weekly Planner should receive every active planning
-   * project assigned to this member.
-   *
-   * Key compatibility is provided by project_keys and
-   * checked again by /api/week-goals before saving.
-   */
+  /* The member starts the project relationship when creating a goal. */
   const planningProjects =
     projects.filter(
       (project) =>
