@@ -17,6 +17,10 @@ import {
   getMemberWorkloads,
 } from '@/lib/workload-data';
 
+import {
+  syncAllZohoProjects,
+} from '@/lib/zoho/project-sync';
+
 export const dynamic =
   'force-dynamic';
 
@@ -31,6 +35,18 @@ export default async function ProjectsPage({
     'string'
       ? query.department
       : undefined;
+
+  /*
+   * Pull Zoho before reading the local list. The sync is idempotent and has a
+   * short in-process TTL, so normal navigation does not repeatedly refresh the
+   * OAuth token or hold a database connection during Zoho API requests.
+   * A temporary Zoho outage must not hide existing CRM projects.
+   */
+  try {
+    await syncAllZohoProjects();
+  } catch (error) {
+    console.error('Automatic Zoho project sync failed:', error);
+  }
 
   /* =======================================================
    * No getStructureData().

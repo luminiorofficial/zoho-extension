@@ -445,8 +445,14 @@ async function syncProjects(
 
   await client.query(
     `
-    UPDATE projects
+    UPDATE projects AS project
        SET is_active = FALSE
+     WHERE NOT EXISTS (
+       SELECT 1
+         FROM zoho_mappings AS mapping
+        WHERE mapping.entity_type = 'PROJECT'
+          AND mapping.local_id = project.id
+     )
     `,
   );
 
@@ -619,9 +625,9 @@ async function run(): Promise<void> {
     );
   }
 
-  if (projects.length !== 40) {
+  if (projects.length === 0) {
     throw new Error(
-      `Expected 40 projects but found ${projects.length}.`,
+      'No projects were found in the project master workbook.',
     );
   }
 
@@ -728,13 +734,18 @@ async function run(): Promise<void> {
     const projectValidation =
       await client.query<{
         total: number;
+        missing_master_projects: number;
       }>(
         `
         SELECT
-          COUNT(*)::integer AS total
+          COUNT(*) FILTER (WHERE is_active = TRUE)::integer AS total,
+          COUNT(*) FILTER (
+            WHERE master_job_no = ANY($1::text[])
+              AND is_active = FALSE
+          )::integer AS missing_master_projects
           FROM projects
-         WHERE is_active = TRUE
         `,
+        [projects.map((project) => project.jobNo)],
       );
 
     if (
@@ -754,11 +765,9 @@ async function run(): Promise<void> {
       );
     }
 
-    if (
-      projectValidation.rows[0].total !== 40
-    ) {
+    if (projectValidation.rows[0].missing_master_projects !== 0) {
       throw new Error(
-        `Database validation failed: expected 40 active projects, got ${projectValidation.rows[0].total}`,
+        `Database validation failed: ${projectValidation.rows[0].missing_master_projects} workbook projects are inactive.`,
       );
     }
 

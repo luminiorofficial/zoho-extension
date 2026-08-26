@@ -3,13 +3,12 @@ import type { QueryResultRow } from 'pg';
 import { redirect } from 'next/navigation';
 
 import { db } from '@/lib/db';
+import { syncZohoProjectById } from '@/lib/zoho/project-sync';
 
 export const dynamic = 'force-dynamic';
 
 interface ZohoProjectBridgePageProps {
-  params: Promise<{
-    zohoProjectId: string;
-  }>;
+  params: Promise<{ zohoProjectId: string }>;
 }
 
 interface MappingRow extends QueryResultRow {
@@ -17,14 +16,35 @@ interface MappingRow extends QueryResultRow {
   local_project_name: string;
 }
 
+async function findLocalProject(
+  zohoProjectId: string,
+): Promise<MappingRow | null> {
+  const mappingResult = await db.query<MappingRow>(
+    `
+    SELECT
+      p.id AS local_project_id,
+      p.name AS local_project_name
+    FROM zoho_mappings zm
+    JOIN projects p ON p.id = zm.local_id
+    WHERE zm.entity_type = 'PROJECT'
+      AND p.is_active = TRUE
+      AND (
+        zm.zoho_entity_id = $1
+        OR zm.zoho_project_id = $1
+      )
+    LIMIT 1
+    `,
+    [zohoProjectId],
+  );
+
+  return mappingResult.rows[0] ?? null;
+}
+
 export default async function ZohoProjectBridgePage({
   params,
 }: ZohoProjectBridgePageProps) {
   const { zohoProjectId } = await params;
 
-  /*
-   * Zoho project IDs are numeric.
-   */
   if (!/^\d+$/.test(zohoProjectId)) {
     return (
       <main className="min-h-screen bg-slate-50 p-8">
@@ -41,77 +61,39 @@ export default async function ZohoProjectBridgePage({
     );
   }
 
-  /*
-   * ======================================================
-   * IMPORTANT PERFORMANCE + RELIABILITY FIX
-   *
-   * DO NOT call Zoho API here.
-   *
-   * Zoho already gave us its Project ID in the URL.
-   * We only need to find the corresponding local project.
-   *
-   * This means:
-   *
-   * Zoho Web Tab
-   *      ↓
-   * Zoho Project ID
-   *      ↓
-   * PostgreSQL mapping
-   *      ↓
-   * Local Project
-   *
-   * No OAuth refresh.
-   * No Zoho API.
-   * No full relationship snapshot.
-   * ======================================================
-   */
-
-  const mappingResult =
-    await db.query<MappingRow>(
-      `
-      SELECT
-        p.id AS local_project_id,
-        p.name AS local_project_name
-
-      FROM zoho_mappings zm
-
-      JOIN projects p
-        ON p.id = zm.local_id
-
-      WHERE
-        zm.entity_type = 'PROJECT'
-
-        AND p.is_active = TRUE
-
-        AND (
-          zm.zoho_entity_id = $1
-          OR zm.zoho_project_id = $1
-        )
-
-      LIMIT 1
-      `,
-      [zohoProjectId],
-    );
-
-  const mapping =
-    mappingResult.rows[0];
+  let mapping = await findLocalProject(zohoProjectId);
 
   /*
-   * Mapping exists.
-   *
-   * Go straight into the CRM UI embedded inside Zoho.
+   * Existing tabs remain a single local lookup. A new Zoho project takes this
+   * ID-specific sync path once, then future visits use its permanent mapping.
    */
-  if (mapping) {
-    redirect(
-      `/projects/${mapping.local_project_id}?embed=zoho`,
-    );
+  if (!mapping) {
+    let syncedLocalProjectId: string | null = null;
+
+    try {
+      const syncResult = await syncZohoProjectById(zohoProjectId);
+      const syncedProject = syncResult.projects.find(
+        (project) => project.zohoProjectId === zohoProjectId,
+      );
+
+      if (syncedProject) {
+        syncedLocalProjectId = syncedProject.localProjectId;
+      }
+    } catch (error) {
+      console.error(`Could not sync Zoho project ${zohoProjectId}:`, error);
+    }
+
+    if (syncedLocalProjectId) {
+      redirect(`/projects/${syncedLocalProjectId}?embed=zoho`);
+    }
+
+    mapping = await findLocalProject(zohoProjectId);
   }
 
-  /*
-   * No permanent mapping.
-   *
-   * We intentionally DO NOT guess a project here.
-   */
+  if (mapping) {
+    redirect(`/projects/${mapping.local_project_id}?embed=zoho`);
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 p-6 sm:p-8">
       <div className="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
@@ -126,7 +108,8 @@ export default async function ZohoProjectBridgePage({
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              This project is not available in the workspace yet.
+              This project could not be synced from Zoho. Refresh the tab or
+              ask an administrator to check the Zoho connection.
             </p>
           </div>
         </div>
