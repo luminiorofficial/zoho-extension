@@ -233,7 +233,6 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
       <WeeklyPlanner
         memberId={member.id}
         projects={initialWork.projects}
-        actions={initialWork.actions}
         weekGoals={initialWork.weekGoals}
       />
 
@@ -534,7 +533,7 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
                       </div>
                       {task.description && <p className="mt-2 text-sm text-slate-500">{task.description}</p>}
                       <p className="mt-3 text-xs text-slate-400">
-                        {task.actionTitle} → {task.projectName} → {task.weekGoalTitle}
+                        {task.projectName} → {task.weekGoalTitle}
                       </p>
                     </div>
 

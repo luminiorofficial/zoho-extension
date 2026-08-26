@@ -159,6 +159,7 @@ export interface Project {
   departmentName: string;
   goalId: string;
   goalTitle: string;
+  keys?: ProjectKey[];
   clientName?: string;
   jobCode?: string;
   name: string;
@@ -174,6 +175,12 @@ export interface Project {
   totalTasks: number;
   doneTasks: number;
   progress: number;
+}
+
+export interface ProjectKey {
+  id: string;
+  code: string;
+  title: string;
 }
 
 export interface ProjectAllocation {
@@ -302,6 +309,8 @@ export interface WeekGoal {
   description?: string;
   weekStart: string;
   weekEnd: string;
+  goalId: string;
+  goalTitle: string;
   actionId: string;
   actionTitle: string;
   projectId: string;
@@ -314,14 +323,6 @@ export interface WeekGoal {
   tasks: DailyTask[];
 }
 
-export interface WorkActionOption {
-  id: string;
-  goalId: string;
-  goalTitle: string;
-  title: string;
-  code?: string;
-}
-
 export interface DepartmentWorkData {
   projects: Project[];
   weekGoals: WeekGoal[];
@@ -329,7 +330,6 @@ export interface DepartmentWorkData {
 }
 
 export interface MemberWorkData extends DepartmentWorkData {
-  actions: WorkActionOption[];
   tasks: DailyTask[];
 }
 

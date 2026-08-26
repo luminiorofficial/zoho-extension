@@ -60,6 +60,9 @@ interface WeekGoalRow extends QueryResultRow {
   week_start: string | Date;
   week_end: string | Date;
 
+  goal_id: string;
+  goal_title: string;
+
   action_id: string;
   action_title: string;
 
@@ -783,6 +786,10 @@ export async function getProjectDetailOptimized(
           wg.week_start + 4
         ) AS week_end,
 
+        wg.goal_id,
+        g.title
+          AS goal_title,
+
         wg.action_id,
         a.title
           AS action_title,
@@ -815,6 +822,10 @@ export async function getProjectDetailOptimized(
       JOIN actions a
         ON a.id =
            wg.action_id
+
+      JOIN goals g
+        ON g.id =
+           wg.goal_id
 
       JOIN projects p
         ON p.id =
@@ -982,6 +993,12 @@ export async function getProjectDetailOptimized(
           dateString(
             row.week_end,
           ),
+
+        goalId:
+          row.goal_id,
+
+        goalTitle:
+          row.goal_title,
 
         actionId:
           row.action_id,

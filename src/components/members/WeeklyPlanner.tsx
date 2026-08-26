@@ -6,12 +6,11 @@ import { useRouter } from 'next/navigation';
 
 import ProgressBar from '@/components/common/ProgressBar';
 import { isoWeekStart } from '@/lib/planner-validation';
-import type { Project, WeekGoal, WorkActionOption } from '@/types';
+import type { Project, WeekGoal } from '@/types';
 
 interface WeeklyPlannerProps {
   memberId: string;
   projects: Project[];
-  actions: WorkActionOption[];
   weekGoals: WeekGoal[];
 }
 
@@ -34,13 +33,12 @@ function weekLabel(start: string, end: string): string {
 export default function WeeklyPlanner({
   memberId,
   projects,
-  actions,
   weekGoals,
 }: WeeklyPlannerProps) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
-  const [actionId, setActionId] = useState('');
+  const [keyGoalId, setKeyGoalId] = useState('');
   const currentWeekStart = isoWeekStart(today());
   const currentWeekGoals = weekGoals.filter(
     (weekGoal) => weekGoal.weekStart === currentWeekStart,
@@ -54,13 +52,13 @@ export default function WeeklyPlanner({
   const [editDescription, setEditDescription] = useState('');
 
   const selectedProject = projects.find((project) => project.id === projectId);
-  const compatibleActions = useMemo(
-    () => actions.filter((action) => action.goalId === selectedProject?.goalId),
-    [actions, selectedProject?.goalId],
+  const availableKeys = useMemo(
+    () => selectedProject?.keys ?? [],
+    [selectedProject],
   );
-  const selectedActionId = compatibleActions.some((action) => action.id === actionId)
-    ? actionId
-    : (compatibleActions[0]?.id ?? '');
+  const selectedKeyGoalId = availableKeys.some((key) => key.id === keyGoalId)
+    ? keyGoalId
+    : (availableKeys[0]?.id ?? '');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,7 +72,7 @@ export default function WeeklyPlanner({
         body: JSON.stringify({
           memberId,
           projectId,
-          actionId: selectedActionId,
+          keyGoalId: selectedKeyGoalId,
           weekStart: currentWeekStart,
           title,
           description,
@@ -133,7 +131,7 @@ export default function WeeklyPlanner({
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Weekly Planner</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Commit to weekly goals linked to your assigned actions and projects.
+            Commit to weekly goals for a project and key.
           </p>
         </div>
 
@@ -156,7 +154,7 @@ export default function WeeklyPlanner({
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-6 rounded-xl border border-violet-100 bg-white p-5 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-4">
             <label className="text-sm font-medium text-slate-700">
               Project
               <select
@@ -164,47 +162,39 @@ export default function WeeklyPlanner({
                 value={projectId}
                 onChange={(event) => {
                   setProjectId(event.target.value);
-                  setActionId('');
+                  setKeyGoalId('');
                 }}
                 className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-violet-500"
               >
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
-                    {project.name} · {project.goalTitle}
+                    {project.name}
                   </option>
                 ))}
               </select>
             </label>
 
             <label className="text-sm font-medium text-slate-700">
-              Assigned action
+              Key
               <select
                 required
-                value={selectedActionId}
-                onChange={(event) => setActionId(event.target.value)}
+                value={selectedKeyGoalId}
+                onChange={(event) => setKeyGoalId(event.target.value)}
                 className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-violet-500"
               >
-                {compatibleActions.map((action) => (
-                  <option key={action.id} value={action.id}>
-                    {action.code ? `${action.code} · ` : ''}{action.title}
+                {!availableKeys.length && (
+                  <option value="">No keys available</option>
+                )}
+                {availableKeys.map((key) => (
+                  <option key={key.id} value={key.id}>
+                    {key.title}
                   </option>
                 ))}
               </select>
             </label>
 
             <label className="text-sm font-medium text-slate-700">
-              Current week
-              <input
-                type="date"
-                readOnly
-                value={currentWeekStart}
-                className="mt-1.5 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600"
-              />
-              <span className="mt-1 block text-xs font-normal text-slate-400">Monday–Friday; other weeks cannot be selected.</span>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Weekly goal
+              Weekly Goal title
               <input
                 required
                 maxLength={500}
@@ -215,7 +205,7 @@ export default function WeeklyPlanner({
               />
             </label>
 
-            <label className="text-sm font-medium text-slate-700 md:col-span-2">
+            <label className="text-sm font-medium text-slate-700">
               Notes
               <textarea
                 maxLength={5000}
@@ -231,7 +221,7 @@ export default function WeeklyPlanner({
 
           <button
             type="submit"
-            disabled={pending || !selectedActionId}
+            disabled={pending || !selectedKeyGoalId}
             className="mt-5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"
           >
             {pending ? 'Saving…' : 'Create Weekly Goal'}
@@ -309,7 +299,7 @@ export default function WeeklyPlanner({
               </div>
             </div>
             <p className="mt-1 text-sm text-slate-500">
-              {weekGoal.actionTitle} · {weekGoal.projectName}
+              {weekGoal.projectName} · {weekGoal.goalTitle}
             </p>
             {weekGoal.description && (
               <p className="mt-2 text-sm text-slate-500">{weekGoal.description}</p>

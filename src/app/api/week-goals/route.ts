@@ -6,6 +6,7 @@ import { isDate, isoWeekStart, isUuid, textValue } from '@/lib/planner-validatio
 interface WeekGoalPayload {
   memberId?: unknown;
   projectId?: unknown;
+  keyGoalId?: unknown;
   actionId?: unknown;
   weekStart?: unknown;
   title?: unknown;
@@ -25,17 +26,25 @@ export async function POST(request: Request) {
   const description = payload.description === undefined
     ? ''
     : textValue(payload.description, 5000);
+  const keyGoalId = payload.keyGoalId === undefined
+    ? null
+    : (isUuid(payload.keyGoalId) ? payload.keyGoalId : undefined);
+  const actionId = payload.actionId === undefined
+    ? null
+    : (isUuid(payload.actionId) ? payload.actionId : undefined);
 
   if (
     !isUuid(payload.memberId)
     || !isUuid(payload.projectId)
-    || !isUuid(payload.actionId)
+    || keyGoalId === undefined
+    || actionId === undefined
+    || (!keyGoalId && !actionId)
     || !isDate(payload.weekStart)
     || !title
     || description === null
   ) {
     return Response.json(
-      { error: 'Member, project, action, week, and goal title are required.' },
+      { error: 'Member, project, key or action, week, and goal title are required.' },
       { status: 400 },
     );
   }
@@ -59,8 +68,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const hierarchyResult = await client.query(
-      `SELECT a.goal_id, p.department_id
+    const hierarchyResult = keyGoalId
+      ? await client.query(
+        `SELECT g.id AS goal_id, a.id AS action_id, p.department_id
+         FROM projects p
+         JOIN project_keys pk
+           ON pk.project_id = p.id
+          AND pk.key_goal_id = $1
+         JOIN goals g
+           ON g.id = pk.key_goal_id
+          AND g.department_id = p.department_id
+          AND g.is_active
+          AND UPPER(BTRIM(g.code)) IN ('KEY_A', 'KEY_B', 'KEY_C')
+         JOIN actions a
+           ON a.goal_id = g.id
+          AND a.is_active
+          AND UPPER(BTRIM(a.code)) = 'GENERAL'
+         JOIN action_assignees aa
+           ON aa.action_id = a.id
+          AND aa.member_id = $3
+         JOIN department_members dm
+           ON dm.department_id = p.department_id
+          AND dm.member_id = $3
+         JOIN project_members pm
+           ON pm.project_id = p.id
+          AND pm.member_id = $3
+         JOIN departments d
+           ON d.id = p.department_id
+          AND d.is_active
+         JOIN members m
+           ON m.id = $3
+          AND m.is_active
+        WHERE p.id = $2
+          AND p.is_active
+          AND p.status IN ('PLANNED', 'ACTIVE', 'INTERNAL_REVIEW', 'CLIENT_REVIEW')
+        ORDER BY a.created_at, a.id
+        LIMIT 1`,
+        [keyGoalId, payload.projectId, payload.memberId],
+      )
+      : await client.query(
+        `SELECT a.goal_id, a.id AS action_id, p.department_id
          FROM actions a
          JOIN goals g
            ON g.id = a.goal_id
@@ -85,15 +132,20 @@ export async function POST(request: Request) {
            ON m.id = $3
           AND m.is_active
         WHERE a.id = $1
-          AND a.is_active`,
-      [payload.actionId, payload.projectId, payload.memberId],
-    );
+          AND a.is_active
+        LIMIT 1`,
+        [actionId, payload.projectId, payload.memberId],
+      );
 
     const hierarchy = hierarchyResult.rows[0];
     if (!hierarchy) {
       await client.query('ROLLBACK');
       return Response.json(
-        { error: 'The selected action, project, and member are not in the same goal flow.' },
+        {
+          error: keyGoalId
+            ? 'The selected key is not available for this project and member.'
+            : 'The selected action, project, and member are not in the same goal flow.',
+        },
         { status: 400 },
       );
     }
@@ -125,7 +177,7 @@ export async function POST(request: Request) {
         hierarchy.department_id,
         payload.memberId,
         hierarchy.goal_id,
-        payload.actionId,
+        hierarchy.action_id,
         payload.projectId,
         weekStart,
         title,

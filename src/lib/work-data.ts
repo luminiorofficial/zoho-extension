@@ -18,7 +18,6 @@ import type {
   ProjectDetail,
   ProjectStatus,
   WeekGoal,
-  WorkActionOption,
 } from '@/types';
 
 interface ProjectRow extends QueryResultRow {
@@ -27,6 +26,11 @@ interface ProjectRow extends QueryResultRow {
   department_name: string;
   goal_id: string;
   goal_title: string;
+  key_goals: {
+    id: string;
+    code: string;
+    title: string;
+  }[];
   client_name: string | null;
   code: string | null;
   name: string;
@@ -50,6 +54,8 @@ interface WeekGoalRow extends QueryResultRow {
   description: string | null;
   week_start: string | Date;
   week_end: string | Date;
+  goal_id: string;
+  goal_title: string;
   action_id: string;
   action_title: string;
   project_id: string;
@@ -87,14 +93,6 @@ interface PeriodProgressRow extends QueryResultRow {
   not_started_tasks: number;
   on_hold_tasks: number;
   progress_percent: string;
-}
-
-interface WorkActionRow extends QueryResultRow {
-  id: string;
-  goal_id: string;
-  goal_title: string;
-  title: string;
-  code: string | null;
 }
 
 interface ClosureItemRow extends QueryResultRow {
@@ -184,6 +182,9 @@ function mapProject(
 
     goalTitle:
       row.goal_title,
+
+    keys:
+      row.key_goals,
 
     clientName:
       row.client_name ?? undefined,
@@ -315,6 +316,32 @@ export async function getProjects(
 
         p.goal_id,
         g.title AS goal_title,
+
+        COALESCE(
+          (
+            SELECT JSONB_AGG(
+              JSONB_BUILD_OBJECT(
+                'id', key_goal.id,
+                'code', key_goal.code,
+                'title', key_goal.title
+              )
+              ORDER BY CASE UPPER(BTRIM(key_goal.code))
+                WHEN 'KEY_A' THEN 1
+                WHEN 'KEY_B' THEN 2
+                WHEN 'KEY_C' THEN 3
+                ELSE 4
+              END
+            )
+            FROM project_keys pk
+            JOIN goals key_goal
+              ON key_goal.id = pk.key_goal_id
+             AND key_goal.department_id = p.department_id
+             AND key_goal.is_active = TRUE
+             AND UPPER(BTRIM(key_goal.code)) IN ('KEY_A', 'KEY_B', 'KEY_C')
+            WHERE pk.project_id = p.id
+          ),
+          '[]'::jsonb
+        ) AS key_goals,
 
         p.client_name,
         p.code,
@@ -451,6 +478,9 @@ async function getWeekGoals(
           wg.week_start + 4
         ) AS week_end,
 
+        wg.goal_id,
+        g.title AS goal_title,
+
         wg.action_id,
         a.title AS action_title,
 
@@ -469,6 +499,10 @@ async function getWeekGoals(
       JOIN actions a
         ON a.id =
            wg.action_id
+
+      JOIN goals g
+        ON g.id =
+           wg.goal_id
 
       JOIN projects p
         ON p.id =
@@ -620,6 +654,12 @@ async function getWeekGoals(
           dateString(
             row.week_end,
           ),
+
+        goalId:
+          row.goal_id,
+
+        goalTitle:
+          row.goal_title,
 
         actionId:
           row.action_id,
@@ -1064,7 +1104,6 @@ export async function getMemberWorkData(
     projects,
     execution,
     periodProgress,
-    actionResult,
   ] = await Promise.all([
     getProjects(
       null,
@@ -1080,81 +1119,14 @@ export async function getMemberWorkData(
       null,
       memberId,
     ),
-
-    db.query<WorkActionRow>(
-      `
-      SELECT DISTINCT
-        a.id,
-        a.goal_id,
-        g.title AS goal_title,
-        a.title,
-        a.code
-
-      FROM actions a
-
-      JOIN goals g
-        ON g.id =
-           a.goal_id
-
-      JOIN departments d
-        ON d.id =
-           g.department_id
-
-      JOIN action_assignees aa
-        ON aa.action_id =
-           a.id
-
-      JOIN members m
-        ON m.id =
-           aa.member_id
-
-      WHERE
-        aa.member_id = $1
-
-        AND a.is_active = TRUE
-        AND g.is_active = TRUE
-        AND d.is_active = TRUE
-        AND m.is_active = TRUE
-
-      ORDER BY
-        g.title,
-        a.code NULLS LAST,
-        a.title
-      `,
-      [
-        memberId,
-      ],
-    ),
   ]);
-
-  const actions:
-    WorkActionOption[] =
-    actionResult.rows.map(
-      (row) => ({
-        id:
-          row.id,
-
-        goalId:
-          row.goal_id,
-
-        goalTitle:
-          row.goal_title,
-
-        title:
-          row.title,
-
-        code:
-          row.code ??
-          undefined,
-      }),
-    );
 
   /*
    * Weekly Planner should receive every active planning
    * project assigned to this member.
    *
-   * Action compatibility is handled by WeeklyPlanner and
-   * again by /api/week-goals before saving.
+   * Key compatibility is provided by project_keys and
+   * checked again by /api/week-goals before saving.
    */
   const planningProjects =
     projects.filter(
@@ -1172,8 +1144,6 @@ export async function getMemberWorkData(
   return {
     projects:
       planningProjects,
-
-    actions,
 
     weekGoals:
       execution.weekGoals,
