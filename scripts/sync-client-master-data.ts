@@ -443,19 +443,6 @@ async function syncProjects(
       masterGoal.rows[0].id;
   }
 
-  await client.query(
-    `
-    UPDATE projects AS project
-       SET is_active = FALSE
-     WHERE NOT EXISTS (
-       SELECT 1
-         FROM zoho_mappings AS mapping
-        WHERE mapping.entity_type = 'PROJECT'
-          AND mapping.local_id = project.id
-     )
-    `,
-  );
-
   for (const project of projects) {
     let existingProject =
       await client.query<{ id: string }>(

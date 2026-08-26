@@ -21,6 +21,7 @@ const DEFAULT_SYNC_MAX_AGE_MS = 15_000;
 
 interface ZohoProjectsResponse {
   projects?: ZohoProjectRecord[];
+  project?: ZohoProjectRecord;
   page_info?: {
     has_next_page?: boolean;
   };
@@ -124,6 +125,26 @@ async function fetchAllZohoProjects(
   }
 
   return [...unique.values()];
+}
+
+async function fetchZohoProjectById(
+  accessToken: string,
+  portalId: string,
+  zohoProjectId: string,
+): Promise<ZohoProjectRecord | null> {
+  try {
+    const payload = await zohoProjectsRequest<
+      ZohoProjectRecord | ZohoProjectsResponse
+    >(
+      accessToken,
+      `/api/v3/portal/${portalId}/projects/${zohoProjectId}`,
+    );
+
+    if ('id' in payload) return payload;
+    return payload.project ?? payload.projects?.[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function getProjectContext(
@@ -566,6 +587,16 @@ async function fetchAndSync(
 
   const token = await refreshZohoAccessToken(connection.refreshToken);
   if (!token.access_token) throw new Error('Zoho did not return a fresh access token.');
+
+  if (zohoProjectId) {
+    const project = await fetchZohoProjectById(
+      token.access_token,
+      connection.portalId,
+      zohoProjectId,
+    );
+
+    if (project) return syncFetchedProjects([project], connection.portalId);
+  }
 
   const projects = await fetchAllZohoProjects(token.access_token, connection.portalId);
   const selected = zohoProjectId
