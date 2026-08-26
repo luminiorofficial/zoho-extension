@@ -81,6 +81,11 @@ interface TaskRow extends QueryResultRow {
   description: string | null;
   status: string;
   carried_forward: boolean;
+  task_actions: {
+    id: string;
+    taskId: string;
+    title: string;
+  }[];
 }
 
 interface PeriodProgressRow extends QueryResultRow {
@@ -119,6 +124,10 @@ function mapStatus(status: string): ActionStatus {
 
   if (status === 'IN_PROGRESS') {
     return 'In Progress';
+  }
+
+  if (status === 'STARTED') {
+    return 'Started';
   }
 
   return 'Not Started';
@@ -299,6 +308,9 @@ function mapTask(
 
     carriedForward:
       row.carried_forward,
+
+    actions:
+      row.task_actions,
   };
 }
 
@@ -559,6 +571,22 @@ async function getWeekGoals(
         t.title,
         t.description,
         t.status,
+
+        COALESCE(
+          (
+            SELECT JSONB_AGG(
+              JSONB_BUILD_OBJECT(
+                'id', ta.id,
+                'taskId', ta.task_id,
+                'title', ta.title
+              )
+              ORDER BY ta.created_at, ta.id
+            )
+            FROM task_actions ta
+            WHERE ta.task_id = t.id
+          ),
+          '[]'::jsonb
+        ) AS task_actions,
 
         EXISTS (
           SELECT 1
@@ -834,8 +862,10 @@ async function getCurrentProgress(
             tre.task_id
           ) FILTER (
             WHERE
-              tre.status =
+              tre.status IN (
+                'STARTED',
                 'IN_PROGRESS'
+              )
           )::integer
             AS in_progress_tasks,
 

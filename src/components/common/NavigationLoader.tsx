@@ -8,11 +8,9 @@ export default function NavigationLoader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(false);
-  }, [pathname, searchParams]);
+  const currentUrl = `${pathname}?${searchParams.toString()}`;
+  const [loadingUrl, setLoadingUrl] = useState<string | null>(null);
+  const loading = loadingUrl !== null && loadingUrl !== currentUrl;
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -59,7 +57,7 @@ export default function NavigationLoader() {
         return;
       }
 
-      const currentUrl =
+      const browserUrl =
         window.location.pathname +
         window.location.search;
 
@@ -67,11 +65,11 @@ export default function NavigationLoader() {
         url.pathname +
         url.search;
 
-      if (currentUrl === nextUrl) {
+      if (browserUrl === nextUrl) {
         return;
       }
 
-      setLoading(true);
+      setLoadingUrl(`${url.pathname}?${url.searchParams.toString()}`);
     };
 
     document.addEventListener(

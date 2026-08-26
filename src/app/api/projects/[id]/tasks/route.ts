@@ -465,6 +465,8 @@ export async function POST(
 
           status:
             'Not Started',
+
+          actions: [],
         },
       },
       { status: 201 },

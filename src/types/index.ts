@@ -1,5 +1,6 @@
 export type ActionStatus =
   | 'Not Started'
+  | 'Started'
   | 'In Progress'
   | 'Done'
   | 'On Hold'
@@ -301,6 +302,13 @@ export interface DailyTask {
   description?: string;
   status: ActionStatus;
   carriedForward?: boolean;
+  actions: TaskAction[];
+}
+
+export interface TaskAction {
+  id: string;
+  taskId: string;
+  title: string;
 }
 
 export interface WeekGoal {

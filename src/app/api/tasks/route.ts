@@ -104,6 +104,7 @@ export async function POST(request: Request) {
               CASE t.status
                 WHEN 'DONE' THEN 'Done'
                 WHEN 'IN_PROGRESS' THEN 'In Progress'
+                WHEN 'STARTED' THEN 'Started'
                 ELSE 'Not Started'
               END AS status,
               wg.department_id AS "departmentId"
@@ -129,7 +130,7 @@ export async function POST(request: Request) {
     revalidatePath('/workload');
     revalidatePath('/dashboard');
 
-    return Response.json({ task }, { status: 201 });
+    return Response.json({ task: { ...task, actions: [] } }, { status: 201 });
   } catch (error) {
     if (typeof error === 'object' && error && 'code' in error && error.code === '23514') {
       return Response.json(

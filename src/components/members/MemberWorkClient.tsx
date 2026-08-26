@@ -32,6 +32,7 @@ interface MemberWorkClientProps {
 
 const statusOptions: { label: ActionStatus; value: string }[] = [
   { label: 'Not Started', value: 'NOT_STARTED' },
+  { label: 'Started', value: 'STARTED' },
   { label: 'In Progress', value: 'IN_PROGRESS' },
   { label: 'Done', value: 'DONE' },
 ];
@@ -45,6 +46,7 @@ function today(): string {
 function databaseStatus(status: ActionStatus): string {
   if (status === 'Done') return 'DONE';
   if (status === 'In Progress') return 'IN_PROGRESS';
+  if (status === 'Started') return 'STARTED';
   return 'NOT_STARTED';
 }
 

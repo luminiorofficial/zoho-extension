@@ -10,7 +10,7 @@ interface TaskPatchPayload {
   status?: unknown;
 }
 
-const statuses = new Set(['NOT_STARTED', 'IN_PROGRESS', 'DONE']);
+const statuses = new Set(['NOT_STARTED', 'STARTED', 'IN_PROGRESS', 'DONE']);
 
 export async function PATCH(
   request: Request,
@@ -108,6 +108,7 @@ export async function PATCH(
               CASE t.status
                 WHEN 'DONE' THEN 'Done'
                 WHEN 'IN_PROGRESS' THEN 'In Progress'
+                WHEN 'STARTED' THEN 'Started'
                 ELSE 'Not Started'
               END AS status,
               wg.department_id AS "departmentId"
@@ -128,7 +129,19 @@ export async function PATCH(
     revalidatePath('/workload');
     revalidatePath('/dashboard');
 
-    return Response.json({ task });
+    const actionResult = await db.query<{
+      id: string;
+      taskId: string;
+      title: string;
+    }>(
+      `SELECT id, task_id AS "taskId", title
+         FROM task_actions
+        WHERE task_id = $1
+        ORDER BY created_at, id`,
+      [task.id],
+    );
+
+    return Response.json({ task: { ...task, actions: actionResult.rows } });
   } catch (error) {
     if (typeof error === 'object' && error && 'code' in error && error.code === '23514') {
       return Response.json(

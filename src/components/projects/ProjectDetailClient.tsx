@@ -16,6 +16,7 @@ import {
 
 import ProgressBar from '@/components/common/ProgressBar';
 import StatusBadge from '@/components/common/StatusBadge';
+import GoalTaskHierarchy from '@/components/members/GoalTaskHierarchy';
 import CapacityBadge from '@/components/workload/CapacityBadge';
 import ProjectTaskCreator from '@/components/projects/ProjectTaskCreator';
 
@@ -1403,7 +1404,7 @@ export default function ProjectDetailClient({
       <div className="grid gap-7 xl:grid-cols-2">
         <section>
           <h2 className="mb-4 font-semibold text-slate-900">
-            Linked actions
+            Legacy goal actions
           </h2>
 
           <div className="space-y-3">
@@ -1452,68 +1453,17 @@ export default function ProjectDetailClient({
           </div>
         </section>
 
-        <section>
+        <section className="xl:col-span-2">
           <h2 className="mb-4 font-semibold text-slate-900">
-            Linked weekly goals
+            Weekly Goal → Tasks → Actions
           </h2>
 
-          <div className="space-y-3">
-            {project.weekGoals.map(
-              (weekGoal) => (
-                <div
-                  key={weekGoal.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4"
-                >
-                  <div className="flex justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">
-                        {
-                          weekGoal.title
-                        }
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        {
-                          weekGoal.assignedMemberName
-                        }{' '}
-                        ·{' '}
-                        {formatDate(
-                          weekGoal.weekStart,
-                        )}
-                        –
-                        {formatDate(
-                          weekGoal.weekEnd,
-                        )}
-                      </p>
-                    </div>
-
-                    <span className="text-sm font-semibold">
-                      {Math.round(
-                        weekGoal.progress,
-                      )}
-                      %
-                    </span>
-                  </div>
-
-                  <ProgressBar
-                    value={
-                      weekGoal.progress
-                    }
-                    size="sm"
-                    className="mt-3"
-                  />
-                </div>
-              ),
-            )}
-
-            {!project.weekGoals
-              .length && (
-              <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
-                No weekly goals
-                linked yet.
-              </p>
-            )}
-          </div>
+          <GoalTaskHierarchy
+            key={project.weekGoals.map((goal) => goal.id).join(':')}
+            weekGoals={project.weekGoals}
+            showMember
+            emptyMessage="No weekly goals are linked to this project yet."
+          />
         </section>
       </div>
 

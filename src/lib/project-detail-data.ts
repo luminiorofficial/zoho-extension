@@ -99,6 +99,11 @@ interface TaskRow extends QueryResultRow {
   status: string;
 
   carried_forward: boolean;
+  task_actions: {
+    id: string;
+    taskId: string;
+    title: string;
+  }[];
 }
 
 interface ClosureItemRow extends QueryResultRow {
@@ -218,6 +223,10 @@ function mapTaskStatus(
 
   if (status === 'IN_PROGRESS') {
     return 'In Progress';
+  }
+
+  if (status === 'STARTED') {
+    return 'Started';
   }
 
   if (status === 'ON_HOLD') {
@@ -368,6 +377,9 @@ function mapTask(
 
     carriedForward:
       row.carried_forward,
+
+    actions:
+      row.task_actions,
   };
 }
 
@@ -880,6 +892,22 @@ export async function getProjectDetailOptimized(
         t.title,
         t.description,
         t.status,
+
+        COALESCE(
+          (
+            SELECT JSONB_AGG(
+              JSONB_BUILD_OBJECT(
+                'id', ta.id,
+                'taskId', ta.task_id,
+                'title', ta.title
+              )
+              ORDER BY ta.created_at, ta.id
+            )
+            FROM task_actions ta
+            WHERE ta.task_id = t.id
+          ),
+          '[]'::jsonb
+        ) AS task_actions,
 
         EXISTS (
           SELECT 1
