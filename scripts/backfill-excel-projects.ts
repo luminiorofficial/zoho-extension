@@ -241,7 +241,7 @@ async function run(): Promise<void> {
 
   const applyChanges = process.argv.includes("--apply");
 
-  const { db } = await import("../lib/db");
+  const { db } = await import("../src/lib/db");
 
   console.log("");
   console.log("==========================================");

@@ -675,7 +675,7 @@ async function run(): Promise<void> {
   }
 
   const { db } =
-    await import("../lib/db");
+    await import("../src/lib/db");
 
   const client =
     await db.connect();

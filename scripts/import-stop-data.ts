@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import type { PoolClient } from "pg";
 import { fileURLToPath } from "url";
-import { db } from "../lib/db";
+import { db } from "../src/lib/db";
 
 const ALLOWED_SHEETS = new Set(["Management", "Operation"]);
 const STATUS_HEADER_PATTERN = /^D\s*\/\s*NS\s*\/\s*P$|^STATUS$/i;

@@ -3,11 +3,11 @@ import path from 'node:path';
 
 import { Pool, type PoolClient } from 'pg';
 
-import { getCapacityStatus } from '../lib/capacity';
-import { isBusinessDayInWeek, isoWeekStart, textValue } from '../lib/planner-validation';
-import { reportingPeriod } from '../lib/reporting-periods';
-import { nonNegativeNumber, optionalScore } from '../lib/reporting-validation';
-import { MEMBER_WORKLOAD_QUERY } from '../lib/workload-query';
+import { getCapacityStatus } from '../src/lib/capacity';
+import { isBusinessDayInWeek, isoWeekStart, textValue } from '../src/lib/planner-validation';
+import { reportingPeriod } from '../src/lib/reporting-periods';
+import { nonNegativeNumber, optionalScore } from '../src/lib/reporting-validation';
+import { MEMBER_WORKLOAD_QUERY } from '../src/lib/workload-query';
 
 function loadLocalEnvironment(): void {
   const envPath = path.join(process.cwd(), '.env.local');
