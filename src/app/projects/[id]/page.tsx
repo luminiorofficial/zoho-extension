@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { Layout } from '@/components';
@@ -38,6 +39,13 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
 
   const content = (
     <>
+      <Link
+        href="/projects"
+        className="mb-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700"
+      >
+        ← All Projects
+      </Link>
+
       <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Project</p>
         <div className="mt-1 flex flex-wrap items-center gap-3">

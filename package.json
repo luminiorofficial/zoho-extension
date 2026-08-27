@@ -15,7 +15,8 @@
     "zoho:test": "tsx --test scripts/zoho-project-sync.test.ts",
     "migration:validate": "tsx scripts/validate-stop-migration.ts",
     "projects:backfill": "tsx scripts/backfill-excel-projects.ts",
-    "master:sync": "tsx scripts/sync-client-master-data.ts"
+    "master:sync": "tsx scripts/sync-client-master-data.ts",
+    "work-planning:dry-run": "tsx scripts/import-work-planning-data.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
