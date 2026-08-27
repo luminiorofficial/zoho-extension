@@ -10,13 +10,16 @@
     "typecheck": "tsc --noEmit",
     "db:test": "tsx scripts/database-tests.ts",
     "db:migrate:key-assignments": "node scripts/apply-key-assignment-migration.cjs",
+    "db:migrate:work-planning-import": "node scripts/apply-work-planning-import-migration.cjs",
     "assignment:test": "tsx scripts/key-assignment-flow.test.ts",
     "migration:test": "tsx --test scripts/import-stop-data.test.ts",
     "zoho:test": "tsx --test scripts/zoho-project-sync.test.ts",
     "migration:validate": "tsx scripts/validate-stop-migration.ts",
     "projects:backfill": "tsx scripts/backfill-excel-projects.ts",
     "master:sync": "tsx scripts/sync-client-master-data.ts",
-    "work-planning:dry-run": "tsx scripts/import-work-planning-data.ts"
+    "work-planning:dry-run": "tsx scripts/import-work-planning-data.ts",
+    "work-planning:import": "tsx scripts/import-work-planning-data.ts",
+    "work-planning:test": "tsx --test scripts/import-work-planning-data.test.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
