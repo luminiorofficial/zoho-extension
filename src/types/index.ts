@@ -137,6 +137,7 @@ export interface ReportingData {
   kpis: KpiReportRow[];
   kpiProgress: number;
   reviews: PeriodReview[];
+  keyAssignments: KeyAssignment[];
 }
 
 export interface PeriodProgress {
@@ -427,4 +428,71 @@ export interface DepartmentCardProps {
 export interface GoalCardProps {
   goal: Goal;
   members: Member[];
+}
+
+/* =========================================================
+ * KEY -> SUB GOAL -> PROJECT -> TASK -> MEMBER -> DATES
+ *
+ * A new, independent assignment flow. Does not reuse Goal/Action/WeekGoal.
+ * ======================================================= */
+
+export type AssignmentKeyCode = 'KEY_A' | 'KEY_B' | 'KEY_C';
+
+export interface AssignmentSubGoal {
+  id: string;
+  keyId: string;
+  title: string;
+  description?: string;
+  isActive: boolean;
+}
+
+export interface AssignmentKey {
+  id: string;
+  code: AssignmentKeyCode;
+  title: string;
+  subGoals: AssignmentSubGoal[];
+}
+
+export interface TaskMasterItem {
+  id: string;
+  category: string;
+  title: string;
+  isActive: boolean;
+}
+
+export interface AssignableProject {
+  id: string;
+  name: string;
+  departmentId: string;
+  departmentName: string;
+}
+
+export interface KeyAssignment {
+  id: string;
+  keyId: string;
+  keyCode: AssignmentKeyCode;
+  keyTitle: string;
+  subGoalId: string;
+  subGoalTitle: string;
+  projectId: string;
+  projectName: string;
+  departmentId: string;
+  departmentName: string;
+  taskId: string;
+  taskCategory: string;
+  taskTitle: string;
+  memberId: string;
+  memberName: string;
+  startDate: string;
+  endDate: string;
+  status: ActionStatus;
+}
+
+export interface KeyAssignmentFilters {
+  departmentId?: string;
+  projectId?: string;
+  memberId?: string;
+  keyId?: string;
+  periodStart?: string;
+  periodEnd?: string;
 }
