@@ -1,178 +1,66 @@
-import {
-  Suspense,
-} from 'react';
+import type { QueryResultRow } from 'pg';
+import { notFound } from 'next/navigation';
 
-import {
-  notFound,
-} from 'next/navigation';
-
-import {
-  Layout,
-} from '@/components';
-
-import ProjectDetailClient
-  from '@/components/projects/ProjectDetailClient';
+import { Layout } from '@/components';
 import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
-
-import {
-  AsyncZohoProjectMembersPanel,
-  ZohoPanelSkeleton,
-} from '@/components/zoho/AsyncZohoProjectPanels';
-
-import {
-  getProjectDetailOptimized,
-  getProjectPageContext,
-} from '@/lib/project-detail-data';
-
-import {
-  getMemberWorkloads,
-} from '@/lib/workload-data';
+import { db } from '@/lib/db';
 import { getKeyAssignments } from '@/lib/key-assignment-data';
 
-export const dynamic =
-  'force-dynamic';
+export const dynamic = 'force-dynamic';
 
-export default async function ProjectDetailPage({
-  params,
-  searchParams,
-}: PageProps<'/projects/[id]'> & {
-  searchParams: Promise<{
-    embed?: string;
-  }>;
-}) {
-  const {
-    id,
-  } = await params;
+interface ProjectRow extends QueryResultRow {
+  id: string;
+  name: string;
+  code: string | null;
+  client_name: string | null;
+  description: string | null;
+  department_name: string;
+  is_active: boolean;
+}
 
-  const query =
-    await searchParams;
-
-  const isZohoEmbed =
-    query.embed === 'zoho';
-
-  /* =======================================================
-   * IMPORTANT:
-   *
-   * We no longer call:
-   *
-   * getStructureData()
-   *
-   * and we no longer fetch Zoho here.
-   *
-   * The local project data can therefore finish without
-   * waiting for the expensive Zoho relationship snapshot.
-   * ===================================================== */
-
-  const [
-    project,
-    pageContext,
-    keyAssignments,
-  ] = await Promise.all([
-    getProjectDetailOptimized(
-      id,
+export default async function ProjectDetailPage({ params, searchParams }: PageProps<'/projects/[id]'>) {
+  const { id } = await params;
+  const query = await searchParams;
+  const [projectResult, assignments] = await Promise.all([
+    db.query<ProjectRow>(
+      `SELECT p.id, p.name, p.code, p.client_name, p.description,
+              d.name AS department_name, p.is_active
+         FROM projects p
+         JOIN departments d ON d.id = p.department_id
+        WHERE p.id = $1
+        LIMIT 1`,
+      [id],
     ),
-
-    getProjectPageContext(),
     getKeyAssignments({ projectId: id }),
   ]);
-
-  if (!project) {
-    notFound();
-  }
-
-  /* =======================================================
-   * Only calculate workloads for active members.
-   *
-   * workload-query.ts now also applies this member filter
-   * inside its expensive CTE calculations.
-   * ===================================================== */
-
-  const allActiveMembers =
-    await getMemberWorkloads(
-      pageContext.activeMemberIds,
-    );
-
-  const departments =
-    pageContext.departments.map(
-      (department) => ({
-        id:
-          department.id,
-
-        name:
-          department.name,
-
-        goals:
-          department.goals.map(
-            (goal) => ({
-              id:
-                goal.id,
-
-              title:
-                goal.title,
-
-              code:
-                goal.code,
-            }),
-          ),
-      }),
-    );
+  const project = projectResult.rows[0];
+  if (!project) notFound();
 
   const content = (
     <>
-      <ProjectDetailClient
-        project={project}
-        departmentMembers={
-          allActiveMembers
-        }
-        departments={
-          departments
-        }
-      />
-
-      <section className="mt-8">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Key Assignments</h2>
-          <p className="mt-1 text-sm text-slate-500">Keys and sub goals assigned to this project, with independent tasks, members, and dates.</p>
+      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Project</p>
+        <div className="mt-1 flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-900">{project.name}</h1>
+          {!project.is_active && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">Inactive</span>}
         </div>
-        <AssignmentHierarchy assignments={keyAssignments} view="project" />
-      </section>
-
-      {/* =================================================
-       * Zoho loads independently.
-       *
-       * If Zoho takes 3 seconds, the local project page
-       * no longer needs to wait those 3 seconds.
-       * =============================================== */}
-
-      <div className="mt-8">
-        <Suspense
-          fallback={
-            <ZohoPanelSkeleton
-              title="Loading live Zoho project members and tasks…"
-            />
-          }
-        >
-          <AsyncZohoProjectMembersPanel
-            projectId={id}
-          />
-        </Suspense>
+        <p className="mt-2 text-sm text-slate-500">{project.department_name}{project.client_name ? ` · ${project.client_name}` : ''}{project.code ? ` · ${project.code}` : ''}</p>
+        {project.description && <p className="mt-3 text-sm text-slate-600">{project.description}</p>}
       </div>
+
+      <section>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Work Assignments ({assignments.length})</h2>
+          <p className="mt-1 text-sm text-slate-500">Project → Key → Sub Goal → Task → Member → Dates</p>
+        </div>
+        <AssignmentHierarchy assignments={assignments} view="project" />
+      </section>
     </>
   );
 
-  if (isZohoEmbed) {
-    return (
-      <main className="min-h-screen bg-slate-50 p-5">
-        <div className="mx-auto max-w-7xl">
-          {content}
-        </div>
-      </main>
-    );
+  if (query.embed === 'zoho') {
+    return <main className="min-h-screen bg-slate-50 p-5"><div className="mx-auto max-w-7xl">{content}</div></main>;
   }
 
-  return (
-    <Layout>
-      {content}
-    </Layout>
-  );
+  return <Layout>{content}</Layout>;
 }

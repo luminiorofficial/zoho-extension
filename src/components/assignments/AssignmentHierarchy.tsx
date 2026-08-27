@@ -9,6 +9,10 @@ function formatDate(value: string): string {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
+function keyLabel(assignment: KeyAssignment): string {
+  return assignment.keyCode.replace('_', ' ');
+}
+
 function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) {
@@ -41,7 +45,7 @@ function AssignmentRows({ assignments, view }: { assignments: KeyAssignment[]; v
           {assignments.map((assignment) => <tr key={assignment.id}>
             {showDepartment && <td className="px-4 py-3 text-slate-700">{assignment.departmentName}</td>}
             {showProject && <td className="px-4 py-3 font-medium text-slate-800">{assignment.projectName}</td>}
-            {showKey && <td className="px-4 py-3"><p className="font-medium text-slate-800">{assignment.keyTitle}</p><p className="text-xs text-slate-500">{assignment.keyCode.replace('_', ' ')}</p></td>}
+            {showKey && <td className="px-4 py-3 font-medium text-slate-800">{keyLabel(assignment)}</td>}
             <td className="px-4 py-3 text-slate-700">{assignment.subGoalTitle}</td>
             <td className="px-4 py-3"><p className="font-medium text-slate-800">{assignment.taskTitle}</p>{assignment.taskCategory !== 'General' && <p className="text-xs text-slate-500">{assignment.taskCategory}</p>}</td>
             {showMember && <td className="px-4 py-3 text-slate-700">{assignment.memberName}</td>}
@@ -77,7 +81,7 @@ export default function AssignmentHierarchy({
   return <div className="space-y-4">{[...groups.values()].map((items) => {
     const first = items[0];
     const title = view === 'project'
-      ? `${first.keyCode.replace('_', ' ')}: ${first.keyTitle}`
+      ? keyLabel(first)
       : first.projectName;
     const description = view === 'department'
       ? `${first.departmentName} · ${items.length} assignment${items.length === 1 ? '' : 's'}`

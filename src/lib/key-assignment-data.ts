@@ -11,8 +11,19 @@ import type {
   KeyAssignment,
   KeyAssignmentFilters,
   KeyAssignmentStatus,
+  AssignmentReportingOption,
+  ReportingOption,
   TaskMasterItem,
 } from '@/types';
+
+export interface KeyAssignmentReportOptions {
+  departments: ReportingOption[];
+  projects: ReportingOption[];
+  members: ReportingOption[];
+  keys: ReportingOption[];
+  subGoals: AssignmentReportingOption[];
+  tasks: ReportingOption[];
+}
 
 interface AssignmentKeyRow extends QueryResultRow {
   id: string;
@@ -171,6 +182,56 @@ export async function getActiveMembersForAssignment(): Promise<AssignableMember[
   );
 
   return result.rows;
+}
+
+export async function getKeyAssignmentReportOptions(): Promise<KeyAssignmentReportOptions> {
+  const [departments, projects, members, keys, subGoals, tasks] = await Promise.all([
+    db.query<QueryResultRow & { id: string; name: string }>(
+      `SELECT DISTINCT d.id, d.name
+         FROM key_assignments ka
+         JOIN projects p ON p.id = ka.project_id
+         JOIN departments d ON d.id = p.department_id
+        ORDER BY d.name`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string; department_id: string }>(
+      `SELECT DISTINCT p.id, p.name, p.department_id
+         FROM key_assignments ka
+         JOIN projects p ON p.id = ka.project_id
+        ORDER BY p.name`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string }>(
+      `SELECT DISTINCT m.id, m.name
+         FROM key_assignments ka
+         JOIN members m ON m.id = ka.member_id
+        ORDER BY m.name`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string }>(
+      `SELECT id, REPLACE(code, '_', ' ') AS name
+         FROM assignment_keys
+        ORDER BY code`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string; key_id: string }>(
+      `SELECT DISTINCT sg.id, sg.title AS name, sg.key_id
+         FROM key_assignments ka
+         JOIN assignment_sub_goals sg ON sg.id = ka.sub_goal_id
+        ORDER BY sg.title`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string }>(
+      `SELECT DISTINCT tm.id, tm.title AS name
+         FROM key_assignments ka
+         JOIN task_master tm ON tm.id = ka.task_id
+        ORDER BY tm.title`,
+    ),
+  ]);
+
+  return {
+    departments: departments.rows,
+    projects: projects.rows.map((row) => ({ id: row.id, name: row.name, departmentId: row.department_id })),
+    members: members.rows,
+    keys: keys.rows,
+    subGoals: subGoals.rows.map((row) => ({ id: row.id, name: row.name, keyId: row.key_id })),
+    tasks: tasks.rows,
+  };
 }
 
 export async function getKeyAssignments(filters: KeyAssignmentFilters): Promise<KeyAssignment[]> {

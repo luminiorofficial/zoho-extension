@@ -38,12 +38,12 @@ const navigation = [
     icon: FolderKanban,
   },
   {
-    name: 'Keys',
+    name: 'Work Planning',
     href: '/keys',
     icon: KeyRound,
   },
   {
-    name: 'Tasks',
+    name: 'Task Master',
     href: '/tasks',
     icon: ListChecks,
   },
@@ -58,7 +58,7 @@ const navigation = [
     icon: CalendarCheck2,
   },
   {
-    name: 'Reports & Evaluations',
+    name: 'Reports',
     href: '/reports',
     icon: ChartNoAxesCombined,
   },

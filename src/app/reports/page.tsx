@@ -1,85 +1,73 @@
 import { Layout } from '@/components';
-import ReportsClient from '@/components/reports/ReportsClient';
-import { getReportingData } from '@/lib/reporting-data';
+import AssignmentReportsClient from '@/components/reports/AssignmentReportsClient';
+import { getKeyAssignmentReportOptions, getKeyAssignments } from '@/lib/key-assignment-data';
 import { isDate, isUuid } from '@/lib/planner-validation';
-import { isReportPeriodType } from '@/lib/reporting-periods';
-import type { KeyAssignmentStatus } from '@/types';
+import type { KeyAssignmentFilters, KeyAssignmentStatus } from '@/types';
 
 export const dynamic = 'force-dynamic';
-
-interface ReportsPageProps {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
 
 function one(value: string | string[] | undefined): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function todayInIndia(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata',
-  }).formatToParts(new Date());
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value;
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
-
-const assignmentStatuses = new Set<KeyAssignmentStatus>([
+const statuses = new Set<KeyAssignmentStatus>([
   'Not Started', 'In Progress', 'Done', 'On Hold', 'Cancelled',
 ]);
 
-function assignmentStatus(value: string | undefined): KeyAssignmentStatus | undefined {
-  return value && assignmentStatuses.has(value as KeyAssignmentStatus)
+function statusValue(value: string | undefined): KeyAssignmentStatus | undefined {
+  return value && statuses.has(value as KeyAssignmentStatus)
     ? value as KeyAssignmentStatus
     : undefined;
 }
 
-export default async function ReportsPage({ searchParams }: ReportsPageProps) {
+export default async function ReportsPage({ searchParams }: PageProps<'/reports'>) {
   const query = await searchParams;
   const departmentId = one(query.departmentId);
-  const memberId = one(query.memberId);
-  const goalId = one(query.goalId);
-  const requestedType = one(query.periodType);
-  const requestedDate = one(query.periodDate);
   const projectId = one(query.projectId);
+  const memberId = one(query.memberId);
   const keyId = one(query.keyId);
   const subGoalId = one(query.subGoalId);
   const taskId = one(query.taskId);
-  const requestedAssignmentStart = one(query.assignmentStartDate);
-  const requestedAssignmentEnd = one(query.assignmentEndDate);
-  const data = await getReportingData({
+  const startDate = one(query.startDate);
+  const endDate = one(query.endDate);
+  const filters: KeyAssignmentFilters = {
     departmentId: isUuid(departmentId) ? departmentId : undefined,
-    memberId: isUuid(memberId) ? memberId : undefined,
-    goalId: isUuid(goalId) ? goalId : undefined,
     projectId: isUuid(projectId) ? projectId : undefined,
+    memberId: isUuid(memberId) ? memberId : undefined,
     keyId: isUuid(keyId) ? keyId : undefined,
     subGoalId: isUuid(subGoalId) ? subGoalId : undefined,
     taskId: isUuid(taskId) ? taskId : undefined,
-    assignmentStatus: assignmentStatus(one(query.assignmentStatus)),
-    assignmentStartDate: isDate(requestedAssignmentStart) ? requestedAssignmentStart : undefined,
-    assignmentEndDate: isDate(requestedAssignmentEnd) ? requestedAssignmentEnd : undefined,
-    periodType: isReportPeriodType(requestedType) ? requestedType : 'MONTHLY',
-    periodDate: isDate(requestedDate) ? requestedDate : todayInIndia(),
-  });
+    status: statusValue(one(query.status)),
+    periodStart: isDate(startDate) ? startDate : undefined,
+    periodEnd: isDate(endDate) ? endDate : undefined,
+  };
+
+  const [assignments, options] = await Promise.all([
+    getKeyAssignments(filters),
+    getKeyAssignmentReportOptions(),
+  ]);
 
   return (
     <Layout>
-      <div className="mb-8"><h1 className="text-2xl font-bold text-slate-900">Progress Reports & Evaluations</h1><p className="mt-1 text-sm text-slate-500">Compare imported and planned work delivery with KPI achievement across weekly, monthly, financial-quarter, and Apr–Mar financial-year periods.</p></div>
-      <ReportsClient
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">Work Planning Reports</h1>
+        <p className="mt-1 text-sm text-slate-500">Filter and review the same assignments saved on the Work Planning page.</p>
+      </div>
+      <AssignmentReportsClient
         key={[
-          data.filters.departmentId,
-          data.filters.memberId,
-          data.filters.goalId,
-          data.filters.projectId,
-          data.filters.keyId,
-          data.filters.subGoalId,
-          data.filters.taskId,
-          data.filters.assignmentStatus,
-          data.filters.assignmentStartDate,
-          data.filters.assignmentEndDate,
-          data.filters.periodType,
-          data.periodStart,
+          filters.departmentId,
+          filters.projectId,
+          filters.memberId,
+          filters.keyId,
+          filters.subGoalId,
+          filters.taskId,
+          filters.status,
+          filters.periodStart,
+          filters.periodEnd,
         ].join(':')}
-        data={data}
+        assignments={assignments}
+        options={options}
+        filters={filters}
       />
     </Layout>
   );
