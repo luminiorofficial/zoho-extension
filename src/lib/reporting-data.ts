@@ -4,12 +4,14 @@ import type { QueryResultRow } from 'pg';
 
 import { db } from './db';
 import { reportingPeriod } from './reporting-periods';
+import { getKeyAssignments } from './key-assignment-data';
 import type {
   KpiReportRow,
   PeriodReview,
   ReportingData,
   ReportingFilters,
   ReportingOption,
+  AssignmentKeyCode,
 } from '@/types';
 
 interface TaskSummaryRow extends QueryResultRow {
@@ -59,8 +61,22 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
   const departmentId = filters.departmentId ?? null;
   const memberId = filters.memberId ?? null;
   const goalId = filters.goalId ?? null;
+  const assignmentStart = filters.assignmentStartDate ?? period.start;
+  const assignmentEnd = filters.assignmentEndDate ?? period.end;
 
-  const [departmentResult, memberResult, goalResult, taskResult, kpiResult, reviewResult] = await Promise.all([
+  const [
+    departmentResult,
+    memberResult,
+    goalResult,
+    taskResult,
+    kpiResult,
+    reviewResult,
+    projectResult,
+    assignmentKeyResult,
+    assignmentSubGoalResult,
+    assignmentTaskResult,
+    keyAssignments,
+  ] = await Promise.all([
     db.query<QueryResultRow & { id: string; name: string }>(
       `SELECT id, name FROM departments WHERE is_active ORDER BY name`,
     ),
@@ -153,6 +169,38 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
         ORDER BY pr.updated_at DESC, pr.created_at DESC`,
       [period.type, period.start, departmentId, memberId, goalId],
     ),
+    db.query<QueryResultRow & { id: string; name: string; department_id: string }>(
+      `SELECT id, name, department_id
+         FROM projects
+        WHERE is_active
+        ORDER BY name`,
+    ),
+    db.query<QueryResultRow & { id: string; code: AssignmentKeyCode; name: string }>(
+      `SELECT id, code, REPLACE(code, '_', ' ') || ': ' || title AS name
+         FROM assignment_keys
+        ORDER BY code`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string; key_id: string }>(
+      `SELECT id, title AS name, key_id
+         FROM assignment_sub_goals
+        ORDER BY title`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string }>(
+      `SELECT id, title AS name
+         FROM task_master
+        ORDER BY title`,
+    ),
+    getKeyAssignments({
+      departmentId: filters.departmentId,
+      projectId: filters.projectId,
+      memberId: filters.memberId,
+      keyId: filters.keyId,
+      subGoalId: filters.subGoalId,
+      taskId: filters.taskId,
+      status: filters.assignmentStatus,
+      periodStart: assignmentStart,
+      periodEnd: assignmentEnd,
+    }),
   ]);
 
   const kpis: KpiReportRow[] = kpiResult.rows.map((row) => ({
@@ -187,6 +235,11 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
     name: row.name,
     departmentId: row.department_id,
   }));
+  const projects: ReportingOption[] = projectResult.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    departmentId: row.department_id,
+  }));
   const reviews: PeriodReview[] = reviewResult.rows.map((row) => ({
     id: row.id,
     departmentId: row.department_id ?? undefined,
@@ -213,6 +266,14 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
     departments,
     members,
     goals,
+    projects,
+    assignmentKeys: assignmentKeyResult.rows.map((row) => ({ id: row.id, name: row.name })),
+    assignmentSubGoals: assignmentSubGoalResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      keyId: row.key_id,
+    })),
+    assignmentTasks: assignmentTaskResult.rows.map((row) => ({ id: row.id, name: row.name })),
     taskProgress: {
       totalTasks: Number(task?.total_tasks ?? 0),
       doneTasks: Number(task?.done_tasks ?? 0),
@@ -221,5 +282,6 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
     kpis,
     kpiProgress,
     reviews,
+    keyAssignments,
   };
 }

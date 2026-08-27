@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { BarChart3, CheckSquare, ClipboardCheck, Save, Target } from 'lucide-react';
 
 import ProgressBar from '@/components/common/ProgressBar';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 import { periodDisplayLabel } from '@/lib/reporting-periods';
 import type { KpiReportRow, ReportingData } from '@/types';
 
@@ -104,6 +105,8 @@ export default function ReportsClient({ data }: { data: ReportingData }) {
     !data.filters.departmentId || member.departmentId === data.filters.departmentId
   )), [data]);
   const goals = data.goals.filter((goal) => !data.filters.departmentId || goal.departmentId === data.filters.departmentId);
+  const projects = data.projects.filter((project) => !data.filters.departmentId || project.departmentId === data.filters.departmentId);
+  const subGoals = data.assignmentSubGoals.filter((subGoal) => !data.filters.keyId || subGoal.keyId === data.filters.keyId);
   const periodLabel = periodDisplayLabel({
     type: data.filters.periodType,
     start: data.periodStart,
@@ -151,6 +154,18 @@ export default function ReportsClient({ data }: { data: ReportingData }) {
           <label className="text-sm font-medium text-slate-700">Report period<select name="periodType" defaultValue={data.filters.periodType} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option><option value="QUARTERLY">Financial quarter</option><option value="YEARLY">Financial year (Apr–Mar)</option></select></label>
           <label className="text-sm font-medium text-slate-700">Date in period<input name="periodDate" type="date" defaultValue={data.filters.periodDate} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm" /></label>
         </div>
+        <div className="mt-5 border-t border-slate-200 pt-5">
+          <p className="mb-3 text-xs font-semibold uppercase text-slate-500">Key assignment filters</p>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-sm font-medium text-slate-700">Project<select name="projectId" defaultValue={data.filters.projectId ?? ''} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"><option value="">All projects</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Key<select name="keyId" defaultValue={data.filters.keyId ?? ''} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"><option value="">All keys</option>{data.assignmentKeys.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Sub Goal<select name="subGoalId" defaultValue={data.filters.subGoalId ?? ''} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"><option value="">All sub goals</option>{subGoals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Task<select name="taskId" defaultValue={data.filters.taskId ?? ''} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"><option value="">All tasks</option>{data.assignmentTasks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Status<select name="assignmentStatus" defaultValue={data.filters.assignmentStatus ?? ''} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"><option value="">All statuses</option><option>Not Started</option><option>In Progress</option><option>Done</option><option>On Hold</option><option>Cancelled</option></select></label>
+            <label className="text-sm font-medium text-slate-700">Assignment From<input name="assignmentStartDate" type="date" defaultValue={data.filters.assignmentStartDate ?? data.periodStart} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm" /></label>
+            <label className="text-sm font-medium text-slate-700">Assignment To<input name="assignmentEndDate" type="date" defaultValue={data.filters.assignmentEndDate ?? data.periodEnd} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm" /></label>
+          </div>
+        </div>
         <div className="mt-4 flex items-center justify-between gap-4"><p className="text-sm text-slate-500">{periodLabel} · {formatDate(data.periodStart)} – {formatDate(data.periodEnd)}</p><button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Apply filters</button></div>
       </form>
 
@@ -158,6 +173,11 @@ export default function ReportsClient({ data }: { data: ReportingData }) {
         <MetricCard title="Work Progress" progress={data.taskProgress.progress} detail={`${data.taskProgress.doneTasks}/${data.taskProgress.totalTasks} work records done`} icon={CheckSquare} />
         <MetricCard title="KPI Progress" progress={data.kpiProgress} detail={`${data.kpis.filter((kpi) => kpi.achievedValue !== undefined).length}/${data.kpis.length} KPIs measured`} icon={Target} />
       </div>
+
+      <section className="mt-8">
+        <div className="mb-4"><h2 className="font-semibold text-slate-900">Key Assignments ({data.keyAssignments.length})</h2><p className="mt-1 text-sm text-slate-500">Assignments matching the selected organisation, work, status, and date filters.</p></div>
+        <AssignmentHierarchy assignments={data.keyAssignments} view="report" />
+      </section>
 
       <section className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4"><BarChart3 className="text-blue-600" size={20} /><div><h2 className="font-semibold text-slate-900">KPI Progress</h2><p className="text-sm text-slate-500">Record achieved values; progress is calculated from the stored target.</p></div></div>

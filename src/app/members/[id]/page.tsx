@@ -8,6 +8,7 @@ import {
   MemberAttendancePanel,
   MemberWorkClient,
 } from '@/components';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 
 import {
   ZohoMemberProjectsPanel,
@@ -27,6 +28,7 @@ import {
 import {
   getZohoMemberRelationshipState,
 } from '@/lib/zoho/relationship-data';
+import { getKeyAssignments } from '@/lib/key-assignment-data';
 
 import type {
   Member,
@@ -281,6 +283,7 @@ export default async function MemberPage({
     attendance,
     leaveRequests,
     zohoRelationship,
+    keyAssignments,
   ] = await Promise.all([
     getMember(id),
 
@@ -297,6 +300,8 @@ export default async function MemberPage({
     getZohoMemberRelationshipState(
       id,
     ),
+
+    getKeyAssignments({ memberId: id }),
   ]);
 
   /* =======================================================
@@ -740,6 +745,14 @@ export default async function MemberPage({
          * Open by default because this is the primary
          * purpose of the member details page.
          * ============================================= */}
+
+        <AccordionSection
+          title={`Key Assignments (${keyAssignments.length})`}
+          description="Projects, keys, sub goals, independent tasks, and assignment dates."
+          defaultOpen
+        >
+          <AssignmentHierarchy assignments={keyAssignments} view="member" />
+        </AccordionSection>
 
         <AccordionSection
           title={`Work Plan & Tasks (${taskCount})`}

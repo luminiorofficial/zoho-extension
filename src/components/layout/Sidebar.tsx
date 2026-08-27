@@ -12,6 +12,8 @@ import {
   Gauge,
   CalendarCheck2,
   ChartNoAxesCombined,
+  ListChecks,
+  KeyRound,
 } from 'lucide-react';
 
 const navigation = [
@@ -34,6 +36,16 @@ const navigation = [
     name: 'Projects',
     href: '/projects',
     icon: FolderKanban,
+  },
+  {
+    name: 'Keys',
+    href: '/keys',
+    icon: KeyRound,
+  },
+  {
+    name: 'Tasks',
+    href: '/tasks',
+    icon: ListChecks,
   },
   {
     name: 'Workload',

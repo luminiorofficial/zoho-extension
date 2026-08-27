@@ -547,21 +547,6 @@ async function syncFetchedProjects(
 
     await client.query(
       `
-      INSERT INTO project_keys (project_id, key_goal_id)
-      SELECT incoming.local_id, goal.id
-      FROM JSONB_TO_RECORDSET($1::jsonb) AS incoming(local_id uuid)
-      JOIN projects project ON project.id = incoming.local_id
-      JOIN goals goal
-        ON goal.department_id = project.department_id
-       AND goal.is_active = TRUE
-       AND UPPER(BTRIM(goal.code)) IN ('KEY_A', 'KEY_B', 'KEY_C')
-      ON CONFLICT (project_id, key_goal_id) DO NOTHING
-      `,
-      [JSON.stringify(updates.map((update) => ({ local_id: update.localId })))],
-    );
-
-    await client.query(
-      `
       UPDATE zoho_connections
       SET last_synced_at = NOW(), updated_at = NOW()
       WHERE portal_id = $1

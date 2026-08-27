@@ -9,6 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:test": "tsx scripts/database-tests.ts",
+    "db:migrate:key-assignments": "node scripts/apply-key-assignment-migration.cjs",
+    "assignment:test": "tsx scripts/key-assignment-flow.test.ts",
     "migration:test": "tsx --test scripts/import-stop-data.test.ts",
     "zoho:test": "tsx --test scripts/zoho-project-sync.test.ts",
     "migration:validate": "tsx scripts/validate-stop-migration.ts",

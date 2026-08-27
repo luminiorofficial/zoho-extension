@@ -11,10 +11,12 @@ import {
   ProjectPanel,
 } from '@/components';
 import { ZohoDepartmentWorkPanel } from '@/components/zoho/ZohoRelationshipPanels';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 import { getStructureData } from '@/lib/structure-data';
 import { getDepartmentWorkData } from '@/lib/work-data';
 import { getDepartmentAttendanceToday } from '@/lib/attendance-data';
 import { getZohoDepartmentRelationshipState } from '@/lib/zoho/relationship-data';
+import { getKeyAssignments } from '@/lib/key-assignment-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,11 +36,13 @@ export default async function DepartmentPage({
     work,
     attendance,
     zohoRelationship,
+    keyAssignments,
   ] = await Promise.all([
     getStructureData(),
     getDepartmentWorkData(id),
     getDepartmentAttendanceToday(id),
     getZohoDepartmentRelationshipState(id),
+    getKeyAssignments({ departmentId: id }),
   ]);
 
   const department = departments.find((item) => item.id === id);
@@ -111,6 +115,14 @@ export default async function DepartmentPage({
           initialProjects={work.projects}
         />
       </div>
+
+      <section className="mt-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Key Assignments</h2>
+          <p className="mt-1 text-sm text-slate-500">Projects in this department, followed by key, sub goal, task, member, and assignment dates.</p>
+        </div>
+        <AssignmentHierarchy assignments={keyAssignments} view="department" />
+      </section>
 
       <div className="mt-8">
         <DepartmentGoalsClient

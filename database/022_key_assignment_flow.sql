@@ -88,7 +88,7 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TABLE IF NOT EXISTS task_master (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    category VARCHAR(100) NOT NULL,
+    category VARCHAR(100) NOT NULL DEFAULT 'General',
     title VARCHAR(300) NOT NULL,
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -99,6 +99,11 @@ CREATE TABLE IF NOT EXISTS task_master (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_task_master_category_title
     ON task_master(category, LOWER(title));
+
+-- Keep reruns useful when this migration was applied before category became
+-- optional in the manual Task Master flow.
+ALTER TABLE task_master
+    ALTER COLUMN category SET DEFAULT 'General';
 
 CREATE INDEX IF NOT EXISTS idx_task_master_active
     ON task_master(is_active);

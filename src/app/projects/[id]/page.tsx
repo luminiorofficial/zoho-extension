@@ -12,6 +12,7 @@ import {
 
 import ProjectDetailClient
   from '@/components/projects/ProjectDetailClient';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 
 import {
   AsyncZohoProjectMembersPanel,
@@ -26,6 +27,7 @@ import {
 import {
   getMemberWorkloads,
 } from '@/lib/workload-data';
+import { getKeyAssignments } from '@/lib/key-assignment-data';
 
 export const dynamic =
   'force-dynamic';
@@ -64,12 +66,14 @@ export default async function ProjectDetailPage({
   const [
     project,
     pageContext,
+    keyAssignments,
   ] = await Promise.all([
     getProjectDetailOptimized(
       id,
     ),
 
     getProjectPageContext(),
+    getKeyAssignments({ projectId: id }),
   ]);
 
   if (!project) {
@@ -124,6 +128,14 @@ export default async function ProjectDetailPage({
           departments
         }
       />
+
+      <section className="mt-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Key Assignments</h2>
+          <p className="mt-1 text-sm text-slate-500">Keys and sub goals assigned to this project, with independent tasks, members, and dates.</p>
+        </div>
+        <AssignmentHierarchy assignments={keyAssignments} view="project" />
+      </section>
 
       {/* =================================================
        * Zoho loads independently.

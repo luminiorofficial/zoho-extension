@@ -3,6 +3,7 @@ import ReportsClient from '@/components/reports/ReportsClient';
 import { getReportingData } from '@/lib/reporting-data';
 import { isDate, isUuid } from '@/lib/planner-validation';
 import { isReportPeriodType } from '@/lib/reporting-periods';
+import type { KeyAssignmentStatus } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,16 @@ function todayInIndia(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+const assignmentStatuses = new Set<KeyAssignmentStatus>([
+  'Not Started', 'In Progress', 'Done', 'On Hold', 'Cancelled',
+]);
+
+function assignmentStatus(value: string | undefined): KeyAssignmentStatus | undefined {
+  return value && assignmentStatuses.has(value as KeyAssignmentStatus)
+    ? value as KeyAssignmentStatus
+    : undefined;
+}
+
 export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const query = await searchParams;
   const departmentId = one(query.departmentId);
@@ -29,10 +40,23 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const goalId = one(query.goalId);
   const requestedType = one(query.periodType);
   const requestedDate = one(query.periodDate);
+  const projectId = one(query.projectId);
+  const keyId = one(query.keyId);
+  const subGoalId = one(query.subGoalId);
+  const taskId = one(query.taskId);
+  const requestedAssignmentStart = one(query.assignmentStartDate);
+  const requestedAssignmentEnd = one(query.assignmentEndDate);
   const data = await getReportingData({
     departmentId: isUuid(departmentId) ? departmentId : undefined,
     memberId: isUuid(memberId) ? memberId : undefined,
     goalId: isUuid(goalId) ? goalId : undefined,
+    projectId: isUuid(projectId) ? projectId : undefined,
+    keyId: isUuid(keyId) ? keyId : undefined,
+    subGoalId: isUuid(subGoalId) ? subGoalId : undefined,
+    taskId: isUuid(taskId) ? taskId : undefined,
+    assignmentStatus: assignmentStatus(one(query.assignmentStatus)),
+    assignmentStartDate: isDate(requestedAssignmentStart) ? requestedAssignmentStart : undefined,
+    assignmentEndDate: isDate(requestedAssignmentEnd) ? requestedAssignmentEnd : undefined,
     periodType: isReportPeriodType(requestedType) ? requestedType : 'MONTHLY',
     periodDate: isDate(requestedDate) ? requestedDate : todayInIndia(),
   });
@@ -45,6 +69,13 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           data.filters.departmentId,
           data.filters.memberId,
           data.filters.goalId,
+          data.filters.projectId,
+          data.filters.keyId,
+          data.filters.subGoalId,
+          data.filters.taskId,
+          data.filters.assignmentStatus,
+          data.filters.assignmentStartDate,
+          data.filters.assignmentEndDate,
           data.filters.periodType,
           data.periodStart,
         ].join(':')}

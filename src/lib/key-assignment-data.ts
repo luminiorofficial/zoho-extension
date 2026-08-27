@@ -4,13 +4,13 @@ import type { QueryResultRow } from 'pg';
 
 import { db } from '@/lib/db';
 import type {
-  ActionStatus,
+  AssignableMember,
   AssignableProject,
   AssignmentKey,
   AssignmentKeyCode,
-  AssignmentSubGoal,
   KeyAssignment,
   KeyAssignmentFilters,
+  KeyAssignmentStatus,
   TaskMasterItem,
 } from '@/types';
 
@@ -71,12 +71,17 @@ function dateString(value: string | Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function mapStatus(status: string): ActionStatus {
+function mapStatus(status: string): KeyAssignmentStatus {
   if (status === 'DONE') return 'Done';
   if (status === 'IN_PROGRESS') return 'In Progress';
   if (status === 'ON_HOLD') return 'On Hold';
   if (status === 'CANCELLED') return 'Cancelled';
   return 'Not Started';
+}
+
+function databaseStatus(status?: KeyAssignmentStatus): string | null {
+  if (!status) return null;
+  return status.toUpperCase().replaceAll(' ', '_');
 }
 
 export async function getAssignmentKeys(): Promise<AssignmentKey[]> {
@@ -114,7 +119,10 @@ export async function getAssignmentKeys(): Promise<AssignmentKey[]> {
     id: row.id,
     code: row.code,
     title: row.title,
-    subGoals: row.sub_goals,
+    subGoals: row.sub_goals.map((subGoal) => ({
+      ...subGoal,
+      description: subGoal.description ?? undefined,
+    })),
   }));
 }
 
@@ -154,6 +162,17 @@ export async function getActiveProjectsForAssignment(): Promise<AssignableProjec
   }));
 }
 
+export async function getActiveMembersForAssignment(): Promise<AssignableMember[]> {
+  const result = await db.query<QueryResultRow & { id: string; name: string }>(
+    `SELECT id, name
+       FROM members
+      WHERE is_active = TRUE
+      ORDER BY name`,
+  );
+
+  return result.rows;
+}
+
 export async function getKeyAssignments(filters: KeyAssignmentFilters): Promise<KeyAssignment[]> {
   const result = await db.query<KeyAssignmentRow>(
     `
@@ -178,8 +197,11 @@ export async function getKeyAssignments(filters: KeyAssignmentFilters): Promise<
       AND ($2::uuid IS NULL OR ka.project_id = $2)
       AND ($3::uuid IS NULL OR ka.member_id = $3)
       AND ($4::uuid IS NULL OR ka.key_id = $4)
-      AND ($5::date IS NULL OR ka.end_date >= $5)
-      AND ($6::date IS NULL OR ka.start_date <= $6)
+      AND ($5::uuid IS NULL OR ka.sub_goal_id = $5)
+      AND ($6::uuid IS NULL OR ka.task_id = $6)
+      AND ($7::varchar IS NULL OR ka.status = $7)
+      AND ($8::date IS NULL OR ka.end_date >= $8)
+      AND ($9::date IS NULL OR ka.start_date <= $9)
 
     ORDER BY ka.start_date DESC, d.name, p.name, m.name
     `,
@@ -188,6 +210,9 @@ export async function getKeyAssignments(filters: KeyAssignmentFilters): Promise<
       filters.projectId ?? null,
       filters.memberId ?? null,
       filters.keyId ?? null,
+      filters.subGoalId ?? null,
+      filters.taskId ?? null,
+      databaseStatus(filters.status),
       filters.periodStart ?? null,
       filters.periodEnd ?? null,
     ],

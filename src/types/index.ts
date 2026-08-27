@@ -75,6 +75,13 @@ export interface ReportingFilters {
   departmentId?: string;
   memberId?: string;
   goalId?: string;
+  projectId?: string;
+  keyId?: string;
+  subGoalId?: string;
+  taskId?: string;
+  assignmentStatus?: KeyAssignmentStatus;
+  assignmentStartDate?: string;
+  assignmentEndDate?: string;
   periodType: PeriodType;
   periodDate: string;
 }
@@ -133,6 +140,10 @@ export interface ReportingData {
   departments: ReportingOption[];
   members: ReportingOption[];
   goals: ReportingOption[];
+  projects: ReportingOption[];
+  assignmentKeys: ReportingOption[];
+  assignmentSubGoals: AssignmentReportingOption[];
+  assignmentTasks: ReportingOption[];
   taskProgress: TaskReportSummary;
   kpis: KpiReportRow[];
   kpiProgress: number;
@@ -438,6 +449,17 @@ export interface GoalCardProps {
 
 export type AssignmentKeyCode = 'KEY_A' | 'KEY_B' | 'KEY_C';
 
+export type KeyAssignmentStatus =
+  | 'Not Started'
+  | 'In Progress'
+  | 'Done'
+  | 'On Hold'
+  | 'Cancelled';
+
+export interface AssignmentReportingOption extends ReportingOption {
+  keyId: string;
+}
+
 export interface AssignmentSubGoal {
   id: string;
   keyId: string;
@@ -467,6 +489,11 @@ export interface AssignableProject {
   departmentName: string;
 }
 
+export interface AssignableMember {
+  id: string;
+  name: string;
+}
+
 export interface KeyAssignment {
   id: string;
   keyId: string;
@@ -485,7 +512,7 @@ export interface KeyAssignment {
   memberName: string;
   startDate: string;
   endDate: string;
-  status: ActionStatus;
+  status: KeyAssignmentStatus;
 }
 
 export interface KeyAssignmentFilters {
@@ -493,6 +520,9 @@ export interface KeyAssignmentFilters {
   projectId?: string;
   memberId?: string;
   keyId?: string;
+  subGoalId?: string;
+  taskId?: string;
+  status?: KeyAssignmentStatus;
   periodStart?: string;
   periodEnd?: string;
 }
