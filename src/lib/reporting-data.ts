@@ -4,7 +4,8 @@ import type { QueryResultRow } from 'pg';
 
 import { db } from './db';
 import { reportingPeriod } from './reporting-periods';
-import { getKeyAssignments } from './key-assignment-data';
+import { getUnifiedWorkReport } from './unified-work-report';
+import { toKeyAssignment } from './key-assignment-data';
 import type {
   KpiReportRow,
   PeriodReview,
@@ -75,7 +76,7 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
     assignmentKeyResult,
     assignmentSubGoalResult,
     assignmentTaskResult,
-    keyAssignments,
+    unifiedWorkReport,
   ] = await Promise.all([
     db.query<QueryResultRow & { id: string; name: string }>(
       `SELECT id, name FROM departments WHERE is_active ORDER BY name`,
@@ -190,7 +191,7 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
          FROM task_master
         ORDER BY title`,
     ),
-    getKeyAssignments({
+    getUnifiedWorkReport({
       departmentId: filters.departmentId,
       projectId: filters.projectId,
       memberId: filters.memberId,
@@ -198,8 +199,8 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
       subGoalId: filters.subGoalId,
       taskId: filters.taskId,
       status: filters.assignmentStatus,
-      periodStart: assignmentStart,
-      periodEnd: assignmentEnd,
+      startDate: assignmentStart,
+      endDate: assignmentEnd,
     }),
   ]);
 
@@ -282,6 +283,6 @@ export async function getReportingData(filters: ReportingFilters): Promise<Repor
     kpis,
     kpiProgress,
     reviews,
-    keyAssignments,
+    keyAssignments: unifiedWorkReport.map(toKeyAssignment),
   };
 }

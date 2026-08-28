@@ -20,6 +20,7 @@ import {
 import {
   syncAllZohoProjects,
 } from '@/lib/zoho/project-sync';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic =
   'force-dynamic';
@@ -64,6 +65,7 @@ export default async function ProjectsPage({
   const [
     projects,
     pageContext,
+    assignments,
   ] = await Promise.all([
     getProjects(
       null,
@@ -71,7 +73,19 @@ export default async function ProjectsPage({
     ),
 
     getProjectPageContext(),
+
+    getUnifiedWorkReport(),
   ]);
+
+  const assignmentCounts = Object.fromEntries(
+    assignments.reduce((counts, assignment) => {
+      counts.set(
+        assignment.project.id,
+        (counts.get(assignment.project.id) ?? 0) + 1,
+      );
+      return counts;
+    }, new Map<string, number>()),
+  );
 
   /* =======================================================
    * Only active members.
@@ -151,6 +165,10 @@ export default async function ProjectsPage({
 
         openCreateInitially={
           query.new === '1'
+        }
+
+        assignmentCounts={
+          assignmentCounts
         }
       />
     </Layout>

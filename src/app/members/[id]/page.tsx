@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation';
 import { Layout } from '@/components';
 import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 import { db } from '@/lib/db';
-import { getKeyAssignments } from '@/lib/key-assignment-data';
+import { toKeyAssignment } from '@/lib/key-assignment-data';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ interface MemberRow extends QueryResultRow {
 
 export default async function MemberPage({ params }: PageProps<'/members/[id]'>) {
   const { id } = await params;
-  const [memberResult, assignments] = await Promise.all([
+  const [memberResult, report] = await Promise.all([
     db.query<MemberRow>(
       `SELECT m.id, m.name, m.email, m.role_title, m.team, m.is_active,
               d.name AS department_name
@@ -30,8 +31,9 @@ export default async function MemberPage({ params }: PageProps<'/members/[id]'>)
         LIMIT 1`,
       [id],
     ),
-    getKeyAssignments({ memberId: id }),
+    getUnifiedWorkReport({ memberId: id }),
   ]);
+  const assignments = report.map(toKeyAssignment);
   const member = memberResult.rows[0];
   if (!member) notFound();
 

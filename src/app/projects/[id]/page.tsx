@@ -5,7 +5,8 @@ import { notFound } from 'next/navigation';
 import { Layout } from '@/components';
 import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 import { db } from '@/lib/db';
-import { getKeyAssignments } from '@/lib/key-assignment-data';
+import { toKeyAssignment } from '@/lib/key-assignment-data';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ interface ProjectRow extends QueryResultRow {
 export default async function ProjectDetailPage({ params, searchParams }: PageProps<'/projects/[id]'>) {
   const { id } = await params;
   const query = await searchParams;
-  const [projectResult, assignments] = await Promise.all([
+  const [projectResult, report] = await Promise.all([
     db.query<ProjectRow>(
       `SELECT p.id, p.name, p.code, p.client_name, p.description,
               d.name AS department_name, p.is_active
@@ -32,8 +33,9 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
         LIMIT 1`,
       [id],
     ),
-    getKeyAssignments({ projectId: id }),
+    getUnifiedWorkReport({ projectId: id }),
   ]);
+  const assignments = report.map(toKeyAssignment);
   const project = projectResult.rows[0];
   if (!project) notFound();
 

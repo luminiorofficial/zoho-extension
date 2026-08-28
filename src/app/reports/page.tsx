@@ -1,7 +1,8 @@
 import { Layout } from '@/components';
 import AssignmentReportsClient from '@/components/reports/AssignmentReportsClient';
-import { getKeyAssignmentReportOptions, getKeyAssignments } from '@/lib/key-assignment-data';
+import { getKeyAssignmentReportOptions, toKeyAssignment } from '@/lib/key-assignment-data';
 import { isDate, isUuid } from '@/lib/planner-validation';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 import type { KeyAssignmentFilters, KeyAssignmentStatus } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -38,14 +39,15 @@ export default async function ReportsPage({ searchParams }: PageProps<'/reports'
     subGoalId: isUuid(subGoalId) ? subGoalId : undefined,
     taskId: isUuid(taskId) ? taskId : undefined,
     status: statusValue(one(query.status)),
-    periodStart: isDate(startDate) ? startDate : undefined,
-    periodEnd: isDate(endDate) ? endDate : undefined,
+    startDate: isDate(startDate) ? startDate : undefined,
+    endDate: isDate(endDate) ? endDate : undefined,
   };
 
-  const [assignments, options] = await Promise.all([
-    getKeyAssignments(filters),
+  const [report, options] = await Promise.all([
+    getUnifiedWorkReport(filters),
     getKeyAssignmentReportOptions(),
   ]);
+  const assignments = report.map(toKeyAssignment);
 
   return (
     <Layout>
@@ -62,8 +64,8 @@ export default async function ReportsPage({ searchParams }: PageProps<'/reports'
           filters.subGoalId,
           filters.taskId,
           filters.status,
-          filters.periodStart,
-          filters.periodEnd,
+          filters.startDate,
+          filters.endDate,
         ].join(':')}
         assignments={assignments}
         options={options}

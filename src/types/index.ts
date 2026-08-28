@@ -515,14 +515,47 @@ export interface KeyAssignment {
   status: KeyAssignmentStatus;
 }
 
-export interface KeyAssignmentFilters {
+export interface UnifiedWorkReportItem {
+  id: string;
+  key: {
+    id: string;
+    code: AssignmentKeyCode;
+    title: string;
+  };
+  subGoal: {
+    id: string;
+    title: string;
+  };
+  project: {
+    id: string;
+    name: string;
+    departmentId: string;
+    departmentName: string;
+  };
+  task: {
+    id: string;
+    category: string;
+    title: string;
+  };
+  member: {
+    id: string;
+    name: string;
+  };
+  startDate: string;
+  endDate: string;
+  status: KeyAssignmentStatus;
+}
+
+export interface UnifiedWorkReportFilters {
   departmentId?: string;
-  projectId?: string;
-  memberId?: string;
   keyId?: string;
   subGoalId?: string;
+  projectId?: string;
   taskId?: string;
+  memberId?: string;
   status?: KeyAssignmentStatus;
-  periodStart?: string;
-  periodEnd?: string;
+  startDate?: string;
+  endDate?: string;
 }
+
+export type KeyAssignmentFilters = UnifiedWorkReportFilters;

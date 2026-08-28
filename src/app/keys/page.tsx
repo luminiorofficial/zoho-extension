@@ -4,20 +4,22 @@ import {
   getActiveMembersForAssignment,
   getActiveProjectsForAssignment,
   getAssignmentKeys,
-  getKeyAssignments,
   getTaskMasterItems,
+  toKeyAssignment,
 } from '@/lib/key-assignment-data';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic = 'force-dynamic';
 
 export default async function KeysPage() {
-  const [keys, assignments, projects, tasks, members] = await Promise.all([
+  const [keys, report, projects, tasks, members] = await Promise.all([
     getAssignmentKeys(),
-    getKeyAssignments({}),
+    getUnifiedWorkReport(),
     getActiveProjectsForAssignment(),
     getTaskMasterItems(),
     getActiveMembersForAssignment(),
   ]);
+  const assignments = report.map(toKeyAssignment);
 
   return (
     <Layout>

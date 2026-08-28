@@ -9,11 +9,15 @@ import {
 
 import { Layout } from '@/components';
 import { getStructureData } from '@/lib/structure-data';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  const { departments, members } = await getStructureData();
+  const [{ departments, members }, assignments] = await Promise.all([
+    getStructureData(),
+    getUnifiedWorkReport(),
+  ]);
 
   const totalGoals = departments.reduce(
     (total, department) => total + department.goals.length,
@@ -79,6 +83,11 @@ const totalMembers = activeMembers.length;
       value: totalMembers,
       icon: Users,
     },
+    {
+      name: 'Work Assignments',
+      value: assignments.length,
+      icon: CheckSquare,
+    },
   ];
 
   return (
@@ -95,7 +104,7 @@ const totalMembers = activeMembers.length;
       </div>
 
       {/* Top Stats */}
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map((stat) => {
           const Icon = stat.icon;
 

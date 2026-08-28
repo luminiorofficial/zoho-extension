@@ -35,8 +35,8 @@ export default function AssignmentReportsClient({
           <label className="text-sm font-medium text-slate-700">Task<select name="taskId" defaultValue={filters.taskId ?? ''} className={fieldClass}><option value="">All tasks</option>{options.tasks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label className="text-sm font-medium text-slate-700">Status<select name="status" defaultValue={filters.status ?? ''} className={fieldClass}><option value="">All statuses</option><option>Not Started</option><option>In Progress</option><option>Done</option><option>On Hold</option><option>Cancelled</option></select></label>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm font-medium text-slate-700">From<input name="startDate" type="date" defaultValue={filters.periodStart ?? ''} className={fieldClass} /></label>
-            <label className="text-sm font-medium text-slate-700">To<input name="endDate" type="date" defaultValue={filters.periodEnd ?? ''} className={fieldClass} /></label>
+            <label className="text-sm font-medium text-slate-700">From<input name="startDate" type="date" defaultValue={filters.startDate ?? ''} className={fieldClass} /></label>
+            <label className="text-sm font-medium text-slate-700">To<input name="endDate" type="date" defaultValue={filters.endDate ?? ''} className={fieldClass} /></label>
           </div>
         </div>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">

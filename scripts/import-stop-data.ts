@@ -4,8 +4,14 @@ import path from "path";
 import type { PoolClient } from "pg";
 import { fileURLToPath } from "url";
 import { db } from "../src/lib/db";
+import {
+  readTeamAlignment,
+  resolveTeamAlignmentName,
+  type TeamAlignmentMember,
+} from "./map-stop-historical-assignments";
 
 const ALLOWED_SHEETS = new Set(["Management", "Operation"]);
+const TEAM_ALIGNMENT_FILE = "Team Alignment.xlsx";
 const STATUS_HEADER_PATTERN = /^D\s*\/\s*NS\s*\/\s*P$|^STATUS$/i;
 
 type DailyStatus =
@@ -31,7 +37,7 @@ interface DepartmentRecord {
   sourceCell: string;
 }
 
-interface MemberRecord {
+export interface MemberRecord {
   key: string;
   departmentKey: string;
   name: string;
@@ -596,37 +602,40 @@ async function getOrInsertDepartment(
   return inserted.rows[0].id;
 }
 
-async function getOrInsertMember(
+export async function getExistingMember(
   client: PoolClient,
   record: MemberRecord,
   sheet: string,
+  teamMembers: TeamAlignmentMember[],
 ): Promise<string> {
-  const existing = await client.query(
-    `SELECT id
-       FROM members
-      WHERE source_sheet = $1
-        AND (source_row = $2 OR name = $3)
-      ORDER BY (source_row = $2) DESC, created_at
-      LIMIT 1`,
-    [sheet, record.sourceRow, record.name],
-  );
-  if (existing.rows[0]) {
-    await client.query(
-      `UPDATE members
-          SET name = $2, source_sheet = $3, source_row = $4, source_cell = $5
-        WHERE id = $1`,
-      [existing.rows[0].id, record.name, sheet, record.sourceRow, record.sourceCell],
+  const resolution = resolveTeamAlignmentName(record.name, teamMembers);
+  if (!resolution.canonicalName) {
+    throw new Error(
+      `STOP member ${JSON.stringify(record.name)} at ${sheet} row ${record.sourceRow} ` +
+        `does not resolve to a unique Team Alignment member (${resolution.strategy})`,
     );
-    return existing.rows[0].id;
   }
 
-  const inserted = await client.query(
-    `INSERT INTO members (name, role_title, is_active, source_sheet, source_row, source_cell)
-     VALUES ($1, NULL, true, $2, $3, $4)
-     RETURNING id`,
-    [record.name, sheet, record.sourceRow, record.sourceCell],
+  const existing = await client.query<{ id: string }>(
+    `SELECT id
+       FROM members
+      WHERE is_active = TRUE
+        AND UPPER(REGEXP_REPLACE(BTRIM(name), '[[:space:]]+', ' ', 'g')) =
+            UPPER(REGEXP_REPLACE(BTRIM($1), '[[:space:]]+', ' ', 'g'))
+      ORDER BY created_at`,
+    [resolution.canonicalName],
   );
-  return inserted.rows[0].id;
+  if (existing.rows.length !== 1) {
+    throw new Error(
+      `Team Alignment member ${JSON.stringify(resolution.canonicalName)} resolved from ` +
+        `STOP ${JSON.stringify(record.name)} at ${sheet} row ${record.sourceRow} ` +
+        `has ${existing.rows.length} active database matches; no member was created`,
+    );
+  }
+
+  // Team Alignment owns member identity and provenance. STOP may only use the
+  // already-synchronised member ID; it must never insert or mutate a member.
+  return existing.rows[0].id;
 }
 
 async function getOrInsertGoal(
@@ -953,6 +962,9 @@ async function importStopData(dryRun = false, structureOnly = false): Promise<vo
     return;
   }
 
+  const teamMembers = await readTeamAlignment(
+    path.join(process.cwd(), "imports", TEAM_ALIGNMENT_FILE),
+  );
   const client = await db.connect();
   let batchId: string | null = null;
   let transactionStarted = false;
@@ -1012,7 +1024,7 @@ async function importStopData(dryRun = false, structureOnly = false): Promise<vo
         const departmentId = departmentIds.get(member.departmentKey);
         if (!departmentId) throw new Error(`Missing department for ${sheet} row ${member.sourceRow}`);
 
-        const memberId = await getOrInsertMember(client, member, sheet);
+        const memberId = await getExistingMember(client, member, sheet, teamMembers);
         memberIds.set(member.key, memberId);
         await client.query(
           `INSERT INTO department_members (department_id, member_id)

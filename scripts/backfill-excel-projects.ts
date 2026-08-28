@@ -239,7 +239,7 @@ async function run(): Promise<void> {
     throw new Error("DATABASE_URL is missing from .env.local");
   }
 
-  const applyChanges = process.argv.includes("--apply");
+  const applyRequested = process.argv.includes("--apply");
 
   const { db } = await import("../src/lib/db");
 
@@ -248,10 +248,9 @@ async function run(): Promise<void> {
   console.log("STOP EXCEL HISTORICAL PROJECT BACKFILL");
   console.log("==========================================");
 
-  if (applyChanges) {
-    console.log("MODE: APPLY - database writes ENABLED");
-  } else {
-    console.log("MODE: DRY RUN - NO database writes");
+  console.log("MODE: REPORT ONLY - project creation from STOP is disabled");
+  if (applyRequested) {
+    console.log("The --apply flag is ignored. CAC Projects is the only project master.");
   }
 
   console.log("");
@@ -513,252 +512,13 @@ async function run(): Promise<void> {
     }
   }
 
-  /**
-   * Default mode intentionally stops here.
-   */
-  if (!applyChanges) {
-    console.log("");
-    console.log(
-      "==========================================",
-    );
-
-    console.log(
-      "DRY RUN COMPLETE - NOTHING WAS INSERTED",
-    );
-
-    console.log(
-      "==========================================",
-    );
-
-    console.log("");
-    console.log(
-      "Review the detected projects above.",
-    );
-
-    console.log(
-      "If they are correct, run:",
-    );
-
-    console.log("");
-    console.log(
-      "npm run projects:backfill -- --apply",
-    );
-
-    await db.end();
-
-    return;
-  }
-
   console.log("");
-  console.log(
-    "Applying validated project candidates...",
-  );
-
-  const client = await db.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    let insertedProjects = 0;
-    let reusedProjects = 0;
-    let memberAssignments = 0;
-    let skippedNoGoal = 0;
-
-    for (const candidate of sortedCandidates) {
-      const goalId =
-        chooseBestGoal(candidate);
-
-      if (!goalId) {
-        skippedNoGoal += 1;
-
-        console.log(
-          `SKIP: ${candidate.departmentName} -> ${candidate.name} has no goal.`,
-        );
-
-        continue;
-      }
-
-      /**
-       * Double-check hierarchy.
-       */
-      const goalCheck =
-        await client.query<{ id: string }>(
-          `
-          SELECT id
-          FROM goals
-          WHERE id = $1
-            AND department_id = $2
-            AND is_active = TRUE
-          LIMIT 1
-          `,
-          [
-            goalId,
-            candidate.departmentId,
-          ],
-        );
-
-      if (!goalCheck.rows[0]) {
-        skippedNoGoal += 1;
-
-        console.log(
-          `SKIP: ${candidate.departmentName} -> ${candidate.name} goal/department mismatch.`,
-        );
-
-        continue;
-      }
-
-      /**
-       * Historical status.
-       *
-       * Do not automatically CLOSED projects.
-       */
-      const status =
-        candidate.totalActivities > 0 &&
-        candidate.doneActivities ===
-          candidate.totalActivities
-          ? "DELIVERED"
-          : "ACTIVE";
-
-      const existing =
-        await client.query<{ id: string }>(
-          `
-          SELECT id
-          FROM projects
-          WHERE department_id = $1
-            AND LOWER(name) = LOWER($2)
-          LIMIT 1
-          `,
-          [
-            candidate.departmentId,
-            candidate.name,
-          ],
-        );
-
-      let projectId: string;
-
-      if (existing.rows[0]) {
-        projectId = existing.rows[0].id;
-        reusedProjects += 1;
-      } else {
-        const inserted =
-          await client.query<{ id: string }>(
-            `
-            INSERT INTO projects (
-              department_id,
-              goal_id,
-              name,
-              description,
-              status,
-              start_date,
-              end_date
-            )
-            VALUES (
-              $1,
-              $2,
-              $3,
-              $4,
-              $5,
-              $6::date,
-              $7::date
-            )
-            RETURNING id
-            `,
-            [
-              candidate.departmentId,
-              goalId,
-              candidate.name,
-
-              "Historical project reconstructed from validated STOP Management/Operation spreadsheet project references.",
-
-              status,
-              candidate.startDate,
-              candidate.endDate,
-            ],
-          );
-
-        projectId = inserted.rows[0].id;
-        insertedProjects += 1;
-      }
-
-      /**
-       * Attach everybody whose imported work
-       * referenced this project.
-       */
-      for (const memberId of candidate.memberIds) {
-        const membership =
-          await client.query(
-            `
-            INSERT INTO project_members (
-              project_id,
-              member_id
-            )
-
-            VALUES ($1, $2)
-
-            ON CONFLICT (
-              project_id,
-              member_id
-            )
-
-            DO NOTHING
-
-            RETURNING member_id
-            `,
-            [
-              projectId,
-              memberId,
-            ],
-          );
-
-        if (membership.rowCount) {
-          memberAssignments += 1;
-        }
-      }
-    }
-
-    await client.query("COMMIT");
-
-    console.log("");
-    console.log(
-      "==========================================",
-    );
-
-    console.log(
-      "PROJECT BACKFILL COMPLETED SUCCESSFULLY",
-    );
-
-    console.log(
-      "==========================================",
-    );
-
-    console.log(
-      `New projects: ${insertedProjects}`,
-    );
-
-    console.log(
-      `Existing projects reused: ${reusedProjects}`,
-    );
-
-    console.log(
-      `Member assignments: ${memberAssignments}`,
-    );
-
-    console.log(
-      `Skipped - no valid goal: ${skippedNoGoal}`,
-    );
-  } catch (error) {
-    await client.query("ROLLBACK");
-
-    console.error("");
-    console.error(
-      "Backfill failed. Transaction rolled back.",
-    );
-
-    throw error;
-  } finally {
-    client.release();
-    await db.end();
-  }
+  console.log("==========================================");
+  console.log("REPORT COMPLETE - NOTHING WAS INSERTED");
+  console.log("==========================================");
+  console.log("");
+  console.log("Use npm run historical-assignments:dry-run for CAC-master resolution and the unresolved-project report.");
+  await db.end();
 }
 
 run().catch((error) => {

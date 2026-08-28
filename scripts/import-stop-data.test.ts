@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import ExcelJS from "exceljs";
+import type { PoolClient } from "pg";
 
-import { parseSheet } from "./import-stop-data";
+import { getExistingMember, parseSheet } from "./import-stop-data";
+import type { TeamAlignmentMember } from "./map-stop-historical-assignments";
 
 function buildWorksheet(): ExcelJS.Worksheet {
   const workbook = new ExcelJS.Workbook();
@@ -63,4 +65,91 @@ test("parseSheet recognizes an action code followed by an unseparated title", ()
   assert.equal(parsed.actions[0].title, "MANAS DHARA TANVI SHASHI");
   assert.equal(parsed.actions[0].sourceCell, "A5");
   assert.equal(parsed.dailyUpdates[2].actionKey, parsed.actions[0].key);
+});
+
+test("STOP member aliases resolve by lookup without creating or mutating members", async () => {
+  const statements: string[] = [];
+  const parameters: unknown[][] = [];
+  const client = {
+    async query(statement: string, values: unknown[]) {
+      statements.push(statement);
+      parameters.push(values);
+      return { rows: [{ id: "team-alignment-member-id" }] };
+    },
+  } as unknown as PoolClient;
+  const teamMembers: TeamAlignmentMember[] = [
+    { name: "ABHJIT JAMBHALE", team: "CGI", sourceRow: 2 },
+  ];
+
+  const memberId = await getExistingMember(
+    client,
+    {
+      key: "member:3",
+      departmentKey: "department:2",
+      name: "Abhijit",
+      sourceRow: 3,
+      sourceCell: "A3",
+    },
+    "Operation",
+    teamMembers,
+  );
+
+  assert.equal(memberId, "team-alignment-member-id");
+  assert.equal(statements.length, 1);
+  assert.match(statements[0], /^\s*SELECT\b/);
+  assert.doesNotMatch(statements[0], /\b(?:INSERT|UPDATE)\b/i);
+  assert.deepEqual(parameters[0], ["ABHJIT JAMBHALE"]);
+});
+
+test("STOP-only member names are rejected before the database is queried", async () => {
+  let queryCount = 0;
+  const client = {
+    async query() {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  } as unknown as PoolClient;
+
+  await assert.rejects(
+    getExistingMember(
+      client,
+      {
+        key: "member:3",
+        departmentKey: "department:2",
+        name: "STOP Only Person",
+        sourceRow: 3,
+        sourceCell: "A3",
+      },
+      "Management",
+      [{ name: "EXISTING PERSON", team: "Admin", sourceRow: 2 }],
+    ),
+    /does not resolve to a unique Team Alignment member/,
+  );
+  assert.equal(queryCount, 0);
+});
+
+test("STOP member resolution rejects missing or duplicate active database members", async () => {
+  const teamMembers: TeamAlignmentMember[] = [
+    { name: "DINESH MORE", team: "POST - PRODUCTION", sourceRow: 2 },
+  ];
+  const record = {
+    key: "member:3",
+    departmentKey: "department:2",
+    name: "Dinesh",
+    sourceRow: 3,
+    sourceCell: "A3",
+  };
+
+  for (const rows of [[], [{ id: "one" }, { id: "two" }]]) {
+    const client = {
+      async query() {
+        return { rows };
+      },
+    } as unknown as PoolClient;
+
+    await assert.rejects(
+      getExistingMember(client, record, "Operation", teamMembers),
+      new RegExp(`has ${rows.length} active database matches; no member was created`),
+    );
+  }
 });

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import ExcelJS from "exceljs";
 import {
+  buildHistoricalAssignmentReport,
   isUsableActivity,
   normalizeStatus,
   readHistoricalWorkRows,
@@ -12,6 +13,8 @@ import {
   resolveTask,
   resolveTeamAlignmentName,
   type ExistingProject,
+  type DatabaseSnapshot,
+  type HistoricalWorkSource,
   type ExistingTask,
   type TeamAlignmentMember,
 } from "./map-stop-historical-assignments";
@@ -21,6 +24,12 @@ const teamMembers: TeamAlignmentMember[] = [
   { name: "OMKAR CHAVAN", team: "EDITING", sourceRow: 3 },
   { name: "OMKAR SHINDE", team: "CGI", sourceRow: 4 },
   { name: "DINESH MORE", team: "POST - PRODUCTION", sourceRow: 5 },
+  { name: "TANVI KANGUTAKR", team: "CGI", sourceRow: 6 },
+  { name: "MAYURI BHOGATE", team: "CGI", sourceRow: 7 },
+  { name: "SHRADDHA BACHKUL", team: "CGI", sourceRow: 8 },
+  { name: "AMISHA NETKE", team: "CGI", sourceRow: 9 },
+  { name: "AAKASH JANGAM", team: "CGI", sourceRow: 10 },
+  { name: "YAANA SAKPAL", team: "CGI", sourceRow: 11 },
 ];
 
 function project(overrides: Partial<ExistingProject>): ExistingProject {
@@ -49,6 +58,12 @@ const canonicalTasks = [
 
 test("member matching uses exact, confirmed spelling, and unique first-name evidence", () => {
   assert.equal(resolveTeamAlignmentName("ABHIJIT", teamMembers).canonicalName, "ABHJIT JAMBHALE");
+  assert.equal(resolveTeamAlignmentName("Tanvi Kangutkar", teamMembers).canonicalName, "TANVI KANGUTAKR");
+  assert.equal(resolveTeamAlignmentName("Mayuri Bagave", teamMembers).canonicalName, "MAYURI BHOGATE");
+  assert.equal(resolveTeamAlignmentName("Shradha Bachkul", teamMembers).canonicalName, "SHRADDHA BACHKUL");
+  assert.equal(resolveTeamAlignmentName("Amisha Netake", teamMembers).canonicalName, "AMISHA NETKE");
+  assert.equal(resolveTeamAlignmentName("Akash Jangam", teamMembers).canonicalName, "AAKASH JANGAM");
+  assert.equal(resolveTeamAlignmentName("Yana Sakpal", teamMembers).canonicalName, "YAANA SAKPAL");
   assert.equal(resolveTeamAlignmentName("dinesh", teamMembers).canonicalName, "DINESH MORE");
   assert.equal(resolveTeamAlignmentName("Omkar", teamMembers).canonicalName, null);
   assert.equal(resolveTeamAlignmentName("Omkar", teamMembers).ambiguous, true);
@@ -71,12 +86,79 @@ test("project matching resolves a confirmed alias but blocks named ambiguous fam
 
 test("project matching never selects duplicate exact project IDs", () => {
   const projects = [
-    project({ name: "One", code: "K1/011/2627" }),
-    project({ name: "Two", code: "K1/011/2627" }),
+    project({ name: "One", code: "K1/011/2627", master_job_no: "K1/011/2627/One" }),
+    project({ name: "Two", code: "K1/011/2627", master_job_no: "K1/011/2627/Two" }),
   ];
   const result = resolveProject("K1/011/2627 lighting", projects);
   assert.equal(result.record, null);
   assert.equal(result.strategy, "AMBIGUOUS_PROJECT_ID");
+});
+
+test("project matching ignores active projects that are not from the CAC master", () => {
+  const manualProject = project({
+    name: "STOP Only Project",
+    code: "STOP-ONLY",
+    master_job_no: null,
+  });
+
+  const result = resolveProject("STOP Only Project", [manualProject]);
+  assert.equal(result.record, null);
+  assert.equal(result.strategy, "NO_PROJECT_MATCH");
+});
+
+test("the import report lists unmatched and ambiguous STOP projects", () => {
+  const source = (activity: string, row: number): HistoricalWorkSource => ({
+    file: "STOP.xlsx",
+    sheet: "Operation",
+    row,
+    cell: `G${row}`,
+    statusCell: `H${row}`,
+    sourceMember: "ABHJIT JAMBHALE",
+    sourceCode: "A 1",
+    keyCode: "KEY_A",
+    subGoalTitle: "Lighting quality",
+    activity,
+    workDate: "2026-04-01",
+    rawStatus: "DONE",
+    status: "DONE",
+  });
+  const snapshot: DatabaseSnapshot = {
+    keys: [{ id: "key-a", code: "KEY_A", title: "Key A" }],
+    subGoals: [{
+      id: "sub-goal-a1",
+      key_id: "key-a",
+      key_code: "KEY_A",
+      title: "Lighting quality",
+      is_active: true,
+    }],
+    projects: [
+      project({ name: "Raymond / One", master_job_no: "A1/001/2627/Raymond/One" }),
+      project({ name: "Raymond / Two", master_job_no: "A1/002/2627/Raymond/Two" }),
+    ],
+    tasks: [task("CGI", "Lighting")],
+    members: [{
+      id: "member-abhjit",
+      name: "ABHJIT JAMBHALE",
+      team: "CGI",
+      is_active: true,
+    }],
+  };
+
+  const report = buildHistoricalAssignmentReport(
+    [source("Unknown Client - lighting", 4), source("Raymond - lighting", 5)],
+    teamMembers,
+    snapshot,
+  );
+
+  assert.equal(report.summary.unmatchedProject, 1);
+  assert.equal(report.summary.ambiguousProject, 1);
+  assert.deepEqual(
+    report.unresolvedProjects.map(({ label, reasons }) => ({ label, reasons })),
+    [
+      { label: "Raymond", reasons: ["ambiguous_project"] },
+      { label: "Unknown Client", reasons: ["unmatched_project"] },
+    ],
+  );
 });
 
 test("task matching is team-scoped and rejects multiple task signals", () => {

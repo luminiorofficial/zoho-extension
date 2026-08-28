@@ -20,9 +20,10 @@ interface ProjectsClientProps {
   members: { id: string; name: string }[];
   initialDepartmentId?: string;
   openCreateInitially?: boolean;
+  assignmentCounts: Record<string, number>;
 }
 
-export default function ProjectsClient({ projects, departments, members, initialDepartmentId, openCreateInitially }: ProjectsClientProps) {
+export default function ProjectsClient({ projects, departments, members, initialDepartmentId, openCreateInitially, assignmentCounts }: ProjectsClientProps) {
   const [showForm, setShowForm] = useState(Boolean(openCreateInitially));
   const [departmentId, setDepartmentId] = useState(initialDepartmentId ?? '');
   const [status, setStatus] = useState('');
@@ -90,6 +91,7 @@ export default function ProjectsClient({ projects, departments, members, initial
             </div>
             <p className="mt-4 text-sm text-slate-500">{project.departmentName} · {project.goalTitle}</p>
             <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500"><Users size={14} /> {project.memberNames.length ? project.memberNames.join(', ') : 'No members assigned'}</p>
+            <p className="mt-2 text-xs font-medium text-blue-700">{assignmentCounts[project.id] ?? 0} work assignment{(assignmentCounts[project.id] ?? 0) === 1 ? '' : 's'}</p>
             <div className="mt-5 flex justify-between text-xs text-slate-500"><span>{project.doneTasks}/{project.totalTasks} tasks done</span><span className="font-semibold text-slate-700">{Math.round(project.progress)}%</span></div>
             <ProgressBar value={project.progress} size="sm" className="mt-2" />
           </Link>

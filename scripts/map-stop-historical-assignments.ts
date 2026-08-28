@@ -484,7 +484,12 @@ export function resolveProject(
   activity: string,
   projects: ExistingProject[],
 ): Match<ExistingProject> {
-  const activeProjects = projects.filter((project) => project.is_active);
+  // CAC Projects is the project master. A project without a CAC master job
+  // number may have been created manually or by another integration and must
+  // never become a STOP match merely because its display name is similar.
+  const activeProjects = projects.filter(
+    (project) => project.is_active && Boolean(project.master_job_no),
+  );
   const normalizedActivity = normalizeHistorical(activity);
   const exactMaster = activeProjects.filter((project) => {
     const master = normalizeHistorical(project.master_job_no ?? "");
@@ -743,6 +748,7 @@ async function readDatabaseSnapshot(client: PoolClient): Promise<DatabaseSnapsho
     SELECT id, name, code, master_job_no, client_name, is_active
       FROM projects
      WHERE is_active
+       AND master_job_no IS NOT NULL
      ORDER BY name, id
   `);
   const tasks = await client.query<ExistingTask>(`
@@ -767,6 +773,9 @@ function assertCompletedMasterData(snapshot: DatabaseSnapshot): void {
   }
   if (snapshot.subGoals.length !== 180) throw new Error(`Expected 180 active canonical Sub Goals; found ${snapshot.subGoals.length}.`);
   if (snapshot.tasks.length !== 25) throw new Error(`Expected 25 active canonical Task Master records; found ${snapshot.tasks.length}.`);
+  if (!snapshot.projects.length) {
+    throw new Error("No active CAC Projects master records were found. Run the CAC master sync before importing STOP assignments.");
+  }
 }
 
 function printCountedSection(title: string, records: CountedLabel[]): void {
@@ -819,8 +828,160 @@ function printReport(report: HistoricalAssignmentReport): void {
   console.log("Dry-run complete. The database transaction was read only and was rolled back. No inserts or updates were attempted.");
 }
 
+type FullyMatchedResolution = HistoricalAssignmentResolution & {
+  key: ExistingKey;
+  subGoal: ExistingSubGoal;
+  project: ExistingProject;
+  task: ExistingTask;
+  member: ExistingMember;
+  startDate: string;
+  endDate: string;
+};
+
+function isFullyMatched(row: HistoricalAssignmentResolution): row is FullyMatchedResolution {
+  return row.problems.length === 0
+    && Boolean(row.key)
+    && Boolean(row.subGoal)
+    && Boolean(row.project)
+    && Boolean(row.task)
+    && Boolean(row.member)
+    && Boolean(row.startDate)
+    && Boolean(row.endDate);
+}
+
+// The STOP source cell (sheet + row + date) plus its resolved member/project/
+// task is the natural key for "has this STOP entry already been imported?".
+// It is enforced by the partial unique index ux_key_assignments_import_source
+// (see 024_key_assignment_import_provenance.sql), so ON CONFLICT DO NOTHING
+// makes reruns idempotent even across separate process invocations, not just
+// within a single run's in-memory state.
+const IMPORT_SOURCE_CONFLICT_TARGET = `(source_sheet, source_row, start_date, member_id, project_id, task_id)
+       WHERE source_sheet IN ('Management', 'Operation') AND source_row IS NOT NULL`;
+
+interface ImportFailure {
+  row: FullyMatchedResolution;
+  error: string;
+}
+
+interface ImportOutcome {
+  inserted: number;
+  skipped: number;
+  unresolved: number;
+  failed: number;
+  failures: ImportFailure[];
+}
+
+async function insertKeyAssignment(
+  client: PoolClient,
+  row: FullyMatchedResolution,
+): Promise<"inserted" | "skipped"> {
+  const result = await client.query(
+    `INSERT INTO key_assignments (
+       key_id, sub_goal_id, project_id, task_id, member_id,
+       start_date, end_date, status,
+       source_sheet, source_row, source_cell, source_activity
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT ${IMPORT_SOURCE_CONFLICT_TARGET}
+     DO NOTHING
+     RETURNING id`,
+    [
+      row.key.id,
+      row.subGoal.id,
+      row.project.id,
+      row.task.id,
+      row.member.id,
+      row.startDate,
+      row.endDate,
+      row.status ?? "NOT_STARTED",
+      row.source.sheet,
+      row.source.row,
+      row.source.cell,
+      row.source.activity,
+    ],
+  );
+  return result.rowCount ? "inserted" : "skipped";
+}
+
+// Only rows with zero unresolved problems (same "fully matched" definition the
+// dry-run report already uses) are attempted. Unresolved rows are skipped,
+// not backfilled — this function never writes to projects, task_master,
+// members, or assignment_sub_goals. Each attempted row runs under its own
+// savepoint so one failure (e.g. a record deactivated between the snapshot
+// read and the insert) cannot abort the rows around it.
+async function importFullyMatchedRows(
+  client: PoolClient,
+  report: HistoricalAssignmentReport,
+): Promise<ImportOutcome> {
+  let inserted = 0;
+  let skipped = 0;
+  let failed = 0;
+  const failures: ImportFailure[] = [];
+
+  for (const row of report.rows) {
+    if (!isFullyMatched(row)) continue;
+    await client.query("SAVEPOINT stop_import_row");
+    try {
+      const outcome = await insertKeyAssignment(client, row);
+      if (outcome === "inserted") inserted += 1;
+      else skipped += 1;
+      await client.query("RELEASE SAVEPOINT stop_import_row");
+    } catch (error) {
+      await client.query("ROLLBACK TO SAVEPOINT stop_import_row");
+      failed += 1;
+      failures.push({ row, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return {
+    inserted,
+    skipped,
+    unresolved: report.rows.length - report.summary.fullyMatchedRows,
+    failed,
+    failures,
+  };
+}
+
+function printImportResult(report: HistoricalAssignmentReport, outcome: ImportOutcome): void {
+  console.log("============================================================");
+  console.log("STOP HISTORICAL ASSIGNMENT MAPPER — IMPORT");
+  console.log("Project master: existing active CAC Projects records only.");
+  console.log("Only fully matched rows were inserted into key_assignments. No project, task, member, or sub goal was created.");
+  console.log("Idempotent: rerunning skips any STOP source cell already imported.");
+  console.log("============================================================");
+  console.log("");
+  console.log("=== IMPORT RESULT ===");
+  console.log(`Total STOP work rows examined: ${report.summary.totalSourceWorkRows}`);
+  console.log(`Inserted: ${outcome.inserted}`);
+  console.log(`Skipped (already imported): ${outcome.skipped}`);
+  console.log(`Unresolved (not fully matched, not attempted): ${outcome.unresolved}`);
+  console.log(`Failed (attempted, error on insert): ${outcome.failed}`);
+  if (outcome.failures.length) {
+    console.log("");
+    console.log("=== FAILED ROWS ===");
+    outcome.failures.forEach(({ row, error }) => {
+      console.log(`[${row.source.file} :: ${row.source.sheet}!${row.source.row} ${row.source.cell}] ${row.source.activity} — ${error}`);
+    });
+  }
+  console.log("");
+  console.log("=== UNRESOLVED BREAKDOWN (unchanged from dry run) ===");
+  console.log(`Unmatched project: ${report.summary.unmatchedProject}`);
+  console.log(`Ambiguous project: ${report.summary.ambiguousProject}`);
+  console.log(`Unmatched member: ${report.summary.unmatchedMember}`);
+  console.log(`Unmatched task: ${report.summary.unmatchedTask}`);
+  console.log(`Unmatched Sub Goal: ${report.summary.unmatchedSubGoal}`);
+  console.log(`Missing/invalid date: ${report.summary.missingInvalidDate}`);
+  printCountedSection("UNRESOLVED PROJECT NAMES", report.unresolvedProjects);
+  printCountedSection("UNRESOLVED MEMBER NAMES", report.unresolvedMembers);
+  printCountedSection("UNMATCHED TASK / ACTIVITY NAMES", report.unmatchedTasks);
+  printCountedSection("UNMATCHED SUB GOALS", report.unmatchedSubGoals);
+  console.log("");
+  console.log("Import complete. Transaction committed.");
+}
+
 async function run(): Promise<void> {
-  const unknownArguments = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const importMode = args.includes("--import");
+  const unknownArguments = args.filter((arg) => arg !== "--import");
   if (unknownArguments.length) throw new Error(`Unknown argument(s): ${unknownArguments.join(", ")}`);
   loadLocalEnvironment();
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not configured.");
@@ -831,19 +992,27 @@ async function run(): Promise<void> {
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
     max: 1,
-    application_name: "stop-historical-assignment-dry-run",
+    application_name: importMode ? "stop-historical-assignment-import" : "stop-historical-assignment-dry-run",
   });
   const client = await pool.connect();
   let transactionOpen = false;
   try {
-    await client.query("BEGIN TRANSACTION READ ONLY");
+    await client.query(importMode ? "BEGIN" : "BEGIN TRANSACTION READ ONLY");
     transactionOpen = true;
     const snapshot = await readDatabaseSnapshot(client);
     assertCompletedMasterData(snapshot);
     const report = buildHistoricalAssignmentReport(sources, teamMembers, snapshot);
-    printReport(report);
-    await client.query("ROLLBACK");
-    transactionOpen = false;
+
+    if (importMode) {
+      const outcome = await importFullyMatchedRows(client, report);
+      await client.query("COMMIT");
+      transactionOpen = false;
+      printImportResult(report, outcome);
+    } else {
+      printReport(report);
+      await client.query("ROLLBACK");
+      transactionOpen = false;
+    }
   } finally {
     if (transactionOpen) await client.query("ROLLBACK").catch(() => undefined);
     client.release();

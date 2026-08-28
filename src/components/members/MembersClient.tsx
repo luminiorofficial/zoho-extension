@@ -10,9 +10,10 @@ import type { Department, Member } from '@/types';
 interface MembersClientProps {
   initialMembers: Member[];
   departments: Pick<Department, 'id' | 'name' | 'isActive'>[];
+  assignmentCounts: Record<string, number>;
 }
 
-export default function MembersClient({ initialMembers, departments }: MembersClientProps) {
+export default function MembersClient({ initialMembers, departments, assignmentCounts }: MembersClientProps) {
   const router = useRouter();
   const members = initialMembers;
   const [editing, setEditing] = useState<Member | null | undefined>(undefined);
@@ -101,6 +102,7 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
   'Designation',
   'Team',
   'Department',
+  'Assignments',
   'Status',
   'Actions',
 ].map((label) => <th key={label} className={`px-5 py-3 text-xs font-semibold uppercase text-slate-500 ${label === 'Actions' ? 'text-right' : 'text-left'}`}>{label}</th>)}
@@ -119,6 +121,7 @@ export default function MembersClient({ initialMembers, departments }: MembersCl
   {member.team ?? '—'}
 </td>
                   <td className="px-5 py-4 text-sm text-slate-600">{assignedDepartments.join(', ') || 'Unassigned'}</td>
+                  <td className="px-5 py-4 text-sm"><Link href={`/members/${member.id}`} className="font-medium text-blue-700 hover:text-blue-800">{assignmentCounts[member.id] ?? 0}</Link></td>
                   <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-5 py-4"><div className="flex items-center justify-end gap-2">
                     <Link href={`/members/${member.id}`} className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50" aria-label={`View ${member.name}`}><ArrowRight size={16} /></Link>

@@ -21,6 +21,7 @@
     "work-planning:import": "tsx scripts/import-work-planning-data.ts",
     "work-planning:test": "tsx --test scripts/import-work-planning-data.test.ts",
     "historical-assignments:dry-run": "tsx scripts/map-stop-historical-assignments.ts",
+    "historical-assignments:import": "tsx scripts/map-stop-historical-assignments.ts --import",
     "historical-assignments:test": "tsx --test scripts/map-stop-historical-assignments.test.ts"
   },
   "dependencies": {
