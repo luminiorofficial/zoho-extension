@@ -19,7 +19,9 @@
     "master:sync": "tsx scripts/sync-client-master-data.ts",
     "work-planning:dry-run": "tsx scripts/import-work-planning-data.ts",
     "work-planning:import": "tsx scripts/import-work-planning-data.ts",
-    "work-planning:test": "tsx --test scripts/import-work-planning-data.test.ts"
+    "work-planning:test": "tsx --test scripts/import-work-planning-data.test.ts",
+    "historical-assignments:dry-run": "tsx scripts/map-stop-historical-assignments.ts",
+    "historical-assignments:test": "tsx --test scripts/map-stop-historical-assignments.test.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

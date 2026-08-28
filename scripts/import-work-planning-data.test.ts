@@ -7,11 +7,17 @@ import ExcelJS from "exceljs";
 
 import {
   groupSubGoals,
+  isConfidentSubGoalReconciliation,
   parseSubGoalsWorksheet,
   parseTasksWorksheet,
   readSubGoals,
   readTasks,
+  taskMatchStrategy,
 } from "./import-work-planning-data";
+import {
+  SUB_GOAL_TITLE_MAX_LENGTH,
+  subGoalTitleValue,
+} from "../src/lib/planner-validation";
 
 test("Sub Goal parsing accepts only explicit A/B/C codes and follows title priority", () => {
   const workbook = new ExcelJS.Workbook();
@@ -38,6 +44,7 @@ test("Sub Goal parsing accepts only explicit A/B/C codes and follows title prior
   assert.equal(records[2].title, "");
   assert.match(records[2].validationError ?? "", /no title/i);
   assert.equal(records[3].title, "Plain inline title");
+  assert.equal(groupSubGoals(records).length, 3, "blank coded rows must not become Sub Goals");
 });
 
 test("Task parsing carries categories forward and ignores category-only rows", () => {
@@ -85,7 +92,7 @@ const suppliedProjects = path.join(process.cwd(), "imports", "CAC Projects.xlsx"
 const suppliedStop = path.join(process.cwd(), "imports", "STOP -CAC 26_27.xlsx");
 const suppliedWorkbooksAvailable = fs.existsSync(suppliedProjects) && fs.existsSync(suppliedStop);
 
-test("supplied workbooks expose all 25 tasks and both STOP sheets", {
+test("supplied workbooks expose exactly 25 tasks and 180 unique A/B/C Sub Goals", {
   skip: suppliedWorkbooksAvailable ? false : "Local import workbooks are not present.",
 }, async () => {
   const [tasks, subGoals] = await Promise.all([
@@ -129,5 +136,60 @@ test("supplied workbooks expose all 25 tasks and both STOP sheets", {
   assert.ok(subGoals.every((subGoal) => /^[ABC] \d+$/.test(subGoal.sourceCode)));
   assert.ok(subGoals.some((subGoal) => subGoal.validationError));
   assert.ok(subGoals.some((subGoal) => subGoal.title.length > 300));
+
+  const populated = subGoals.filter((subGoal) => !subGoal.validationError);
+  const groups = groupSubGoals(subGoals);
+  assert.equal(populated.length, 266);
+  assert.equal(groups.length, 180);
+  assert.equal(new Set(groups.map((group) => group.identity)).size, 180);
 });
 
+test("CGI Modelling reconciles to the canonical CAC Modeling task", () => {
+  assert.equal(taskMatchStrategy("CGI", "Modelling", "CGI", "Modeling"), "CANONICAL_ALIAS");
+  assert.equal(taskMatchStrategy("CGI", "Modeling", "CGI", "Modeling"), "EXACT");
+  assert.equal(taskMatchStrategy("Editing", "Modelling", "CGI", "Modeling"), "NONE");
+
+  const existing = [{ category: "CGI", title: "Modelling" }];
+  const matches = existing.filter((task) => (
+    taskMatchStrategy(task.category, task.title, "CGI", "Modeling") !== "NONE"
+  ));
+  assert.equal(matches.length, 1);
+});
+
+test("manual Sub Goal titles reuse records only from confident full-text evidence", {
+  skip: suppliedWorkbooksAvailable ? false : "Local import workbooks are not present.",
+}, async () => {
+  const subGoals = await readSubGoals(suppliedStop);
+  const populated = subGoals.filter((subGoal) => !subGoal.validationError);
+  const existing = [
+    ["KEY_A", "Supervise", "Supervise creative team activities and ensure project preparedness for freelancers."],
+    ["KEY_A", "Collaborate", "Collaborate with Sales and Project Managers to align artist lists and timelines."],
+    ["KEY_A", "Monitor", "Monitor and improve job-wise post work efficiency using project management tools (e.g., Trello, Notion, or Asana)."],
+    ["KEY_B", "Assigning", "Assign the right artist for the job in coordination with the artist database (work with Sales team Disha/ Project Manager)."],
+    ["KEY_B", "Track Job", "Track job timelines to avoid delays and rescheduling."],
+    ["KEY_B", "Organising - Freelance", "Prepare complete and accurate file sets for freelancers."],
+    ["KEY_C", "Final PPT", "Clean up final PPTs with functional links."],
+    ["KEY_C", "Final Check", "Run final checks for all formats: JPEGs, PSDs, TIFFs, etc."],
+    ["KEY_C", "Portfolio", "Finalize portfolio-ready assets in collaboration with Team"],
+  ] as const;
+
+  for (const [keyCode, title, description] of existing) {
+    const matches = populated.filter((source) => (
+      source.keyCode === keyCode
+      && isConfidentSubGoalReconciliation(title, description, source.title)
+    ));
+    assert.equal(matches.length, 1, `${title} should have one confident STOP match`);
+  }
+
+  assert.equal(
+    populated.filter((source) => isConfidentSubGoalReconciliation("testing", "test", source.title)).length,
+    0,
+  );
+});
+
+test("Sub Goal API and UI shared limit accepts imported titles above 300 characters", () => {
+  const importedTitle = "A".repeat(354);
+  assert.ok(SUB_GOAL_TITLE_MAX_LENGTH >= importedTitle.length);
+  assert.equal(subGoalTitleValue(importedTitle), importedTitle);
+  assert.equal(subGoalTitleValue("A".repeat(SUB_GOAL_TITLE_MAX_LENGTH + 1)), null);
+});

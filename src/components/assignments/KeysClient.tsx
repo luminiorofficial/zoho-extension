@@ -5,6 +5,7 @@ import { Archive, Pencil, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation';
 
 import StatusBadge from '@/components/common/StatusBadge';
+import { SUB_GOAL_TITLE_MAX_LENGTH } from '@/lib/planner-validation';
 import type {
   AssignableMember,
   AssignableProject,
@@ -98,7 +99,7 @@ function SubGoalItem({ subGoal }: { subGoal: AssignmentSubGoal }) {
     <li className={`rounded-lg border px-3 py-3 ${subGoal.isActive ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
       {editing ? (
         <form onSubmit={(event) => { event.preventDefault(); void update({ title, description }); }} className="space-y-2">
-          <input required aria-label="Sub goal title" value={title} maxLength={300} onChange={(event) => setTitle(event.target.value)} className={inputClass} />
+          <input required aria-label="Sub goal title" value={title} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} className={inputClass} />
           <textarea aria-label="Sub goal description" value={description} maxLength={2000} rows={2} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" className={inputClass} />
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 p-2 text-slate-600" title="Cancel edit"><X size={15} /></button>
@@ -166,7 +167,7 @@ function SubGoalManager({ keys }: { keys: AssignmentKey[] }) {
 
             {addingToKeyId === key.id && (
               <form onSubmit={(event) => void addSubGoal(event, key.id)} className="mt-4 rounded-lg bg-blue-50/60 p-3">
-                <input required value={title} maxLength={300} onChange={(event) => setTitle(event.target.value)} placeholder="Sub goal title" className={inputClass} />
+                <input required value={title} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} placeholder="Sub goal title" className={inputClass} />
                 <textarea value={description} maxLength={2000} rows={2} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" className={inputClass} />
                 {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
                 <button disabled={pending} className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{pending ? 'Adding...' : 'Add Sub Goal'}</button>

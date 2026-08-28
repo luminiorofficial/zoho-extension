@@ -19,6 +19,15 @@ export function textValue(value: unknown, maximumLength = Number.POSITIVE_INFINI
   return cleaned.length <= maximumLength ? cleaned : null;
 }
 
+// assignment_sub_goals.title becomes TEXT in migration 023. Keep one generous
+// application guardrail so imported spreadsheet titles remain editable while
+// accidental, unbounded request bodies are still rejected consistently.
+export const SUB_GOAL_TITLE_MAX_LENGTH = 10_000;
+
+export function subGoalTitleValue(value: unknown): string | null {
+  return textValue(value, SUB_GOAL_TITLE_MAX_LENGTH);
+}
+
 export function uuidArray(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.some((item) => !isUuid(item))) return null;
   return [...new Set(value)];

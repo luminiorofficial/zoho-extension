@@ -1,7 +1,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/lib/db';
-import { isUuid, textValue } from '@/lib/planner-validation';
+import { isUuid, subGoalTitleValue, textValue } from '@/lib/planner-validation';
 
 interface SubGoalPayload {
   keyId?: unknown;
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
-  const title = textValue(payload.title, 300);
+  const title = subGoalTitleValue(payload.title);
   const description = payload.description === undefined
     ? ''
     : textValue(payload.description, 2000);

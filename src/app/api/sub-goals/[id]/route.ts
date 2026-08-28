@@ -1,7 +1,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { db } from '@/lib/db';
-import { isUuid, textValue } from '@/lib/planner-validation';
+import { isUuid, subGoalTitleValue, textValue } from '@/lib/planner-validation';
 
 interface SubGoalPatchPayload {
   title?: unknown;
@@ -28,7 +28,7 @@ export async function PATCH(request: Request, context: RouteContext<'/api/sub-go
   };
 
   if ('title' in payload) {
-    const title = textValue(payload.title, 300);
+    const title = subGoalTitleValue(payload.title);
     if (!title) return Response.json({ error: 'Sub goal title is required.' }, { status: 400 });
     add('title', title);
   }

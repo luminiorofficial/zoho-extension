@@ -13,7 +13,7 @@ const FILES = {
 const SUB_GOAL_SHEETS = ["Operation", "Management"] as const;
 
 type MatchStatus = "MATCHED" | "UNMATCHED" | "AMBIGUOUS";
-type Disposition = "INSERT" | "EXISTING" | "READ_ONLY_MATCH" | "SKIP";
+type Disposition = "INSERT" | "EXISTING" | "RECONCILE" | "READ_ONLY_MATCH" | "SKIP";
 type KeyCode = "KEY_A" | "KEY_B" | "KEY_C";
 
 export interface SourceRef {
@@ -135,9 +135,11 @@ interface ImportSources {
 
 interface ImportReport {
   sources: ImportSources;
+  keys: ExistingKey[];
   subGoalGroups: SourceGroup<SubGoalSource>[];
   taskGroups: SourceGroup<TaskSource>[];
   subGoals: ReconciliationRecord[];
+  unmatchedExistingSubGoals: ExistingSubGoal[];
   projects: ReconciliationRecord[];
   tasks: ReconciliationRecord[];
   members: ReconciliationRecord[];
@@ -146,10 +148,12 @@ interface ImportReport {
 
 interface ApplyStats {
   subGoalsInserted: number;
+  subGoalsReconciled: number;
   subGoalsReactivated: number;
   subGoalsExisting: number;
   subGoalsSkipped: number;
   tasksInserted: number;
+  tasksReconciled: number;
   tasksReactivated: number;
   tasksExisting: number;
   tasksSkipped: number;
@@ -190,6 +194,76 @@ export function normalize(value: string): string {
     .normalize("NFKC")
     .replace(/[\u2013\u2014]/g, "-")
     .toLocaleUpperCase("en-IN");
+}
+
+function comparisonFingerprint(value: string): string {
+  return normalize(value).replace(/[^A-Z0-9]+/g, "");
+}
+
+function comparisonTokens(value: string): Set<string> {
+  return new Set(
+    normalize(value)
+      .replace(/[^A-Z0-9]+/g, " ")
+      .split(" ")
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Conservative bridge for manually shortened Sub Goals. Exact normalized
+ * description evidence is preferred. A high-overlap fallback handles small,
+ * obvious wording changes such as replacing a list of names with "Team".
+ */
+export function isConfidentSubGoalReconciliation(
+  existingTitle: string,
+  existingDescription: string | null,
+  stopSubGoalTitle: string,
+): boolean {
+  const sourceFingerprint = comparisonFingerprint(stopSubGoalTitle);
+  const sourceTokens = comparisonTokens(stopSubGoalTitle);
+  const evidence = [
+    existingTitle,
+    existingDescription ?? "",
+    `${existingTitle} ${existingDescription ?? ""}`,
+  ].filter(Boolean);
+
+  return evidence.some((value) => {
+    const evidenceFingerprint = comparisonFingerprint(value);
+    if (evidenceFingerprint === sourceFingerprint) return true;
+
+    const evidenceTokens = comparisonTokens(value);
+    const common = [...evidenceTokens].filter((token) => sourceTokens.has(token)).length;
+    const smallerTokenCount = Math.min(evidenceTokens.size, sourceTokens.size);
+    const unionCount = new Set([...evidenceTokens, ...sourceTokens]).size;
+
+    return common >= 5
+      && smallerTokenCount > 0
+      && common / smallerTokenCount >= 0.8
+      && unionCount > 0
+      && common / unionCount >= 0.55;
+  });
+}
+
+export type TaskMatchStrategy = "EXACT" | "CANONICAL_ALIAS" | "NONE";
+
+export function taskMatchStrategy(
+  existingCategory: string,
+  existingTitle: string,
+  sourceCategory: string,
+  sourceTitle: string,
+): TaskMatchStrategy {
+  if (normalize(existingCategory) !== normalize(sourceCategory)) return "NONE";
+  if (normalize(existingTitle) === normalize(sourceTitle)) return "EXACT";
+
+  if (
+    normalize(sourceCategory) === "CGI"
+    && normalize(sourceTitle) === "MODELING"
+    && normalize(existingTitle) === "MODELLING"
+  ) {
+    return "CANONICAL_ALIAS";
+  }
+
+  return "NONE";
 }
 
 function sourceLabel(source: SourceRef): string {
@@ -472,14 +546,77 @@ function projectMatchLabel(project: ExistingProject): string {
   return `${project.name} [${project.code ?? "no code"}; ${project.department_name}; ${project.is_active ? "active" : "inactive"}]`;
 }
 
-function reconcileSubGoals(
+type SubGoalMatchStrategy = "EXACT_TITLE" | "TITLE_DESCRIPTION" | "NONE";
+
+interface SubGoalResolution {
+  group: SourceGroup<SubGoalSource>;
+  keys: ExistingKey[];
+  candidates: ExistingSubGoal[];
+  strategy: SubGoalMatchStrategy;
+  sharedCandidate: boolean;
+}
+
+function resolveSubGoalGroups(
   groups: SourceGroup<SubGoalSource>[],
   snapshot: DatabaseSnapshot,
+): SubGoalResolution[] {
+  const preliminary = groups.map((group): SubGoalResolution => {
+    const source = group.canonical;
+    const keys = snapshot.keys.filter((key) => normalize(key.code) === source.keyCode);
+    if (keys.length !== 1) {
+      return { group, keys, candidates: [], strategy: "NONE", sharedCandidate: false };
+    }
+
+    const underKey = snapshot.subGoals.filter((subGoal) => subGoal.key_id === keys[0].id);
+    const exact = underKey.filter(
+      (subGoal) => normalize(subGoal.title) === normalize(source.title),
+    );
+    if (exact.length) {
+      return {
+        group,
+        keys,
+        candidates: exact,
+        strategy: "EXACT_TITLE",
+        sharedCandidate: false,
+      };
+    }
+
+    const reconciled = underKey.filter((subGoal) => isConfidentSubGoalReconciliation(
+      subGoal.title,
+      subGoal.description,
+      source.title,
+    ));
+    return {
+      group,
+      keys,
+      candidates: reconciled,
+      strategy: reconciled.length ? "TITLE_DESCRIPTION" : "NONE",
+      sharedCandidate: false,
+    };
+  });
+
+  const claims = new Map<string, number>();
+  for (const resolution of preliminary) {
+    if (resolution.candidates.length === 1) {
+      const id = resolution.candidates[0].id;
+      claims.set(id, (claims.get(id) ?? 0) + 1);
+    }
+  }
+
+  return preliminary.map((resolution) => ({
+    ...resolution,
+    sharedCandidate: resolution.candidates.length === 1
+      && (claims.get(resolution.candidates[0].id) ?? 0) > 1,
+  }));
+}
+
+function reconcileSubGoals(
+  resolutions: SubGoalResolution[],
 ): ReconciliationRecord[] {
-  return groups.map((group) => {
+  return resolutions.map((resolution) => {
+    const { group, keys, candidates, strategy, sharedCandidate } = resolution;
     const source = group.canonical;
     const label = `${source.keyCode} → ${source.title}`;
-    const keys = snapshot.keys.filter((key) => normalize(key.code) === source.keyCode);
     if (keys.length !== 1) {
       return {
         status: keys.length ? "AMBIGUOUS" : "UNMATCHED",
@@ -494,35 +631,36 @@ function reconcileSubGoals(
       };
     }
 
-    const matches = snapshot.subGoals.filter(
-      (subGoal) => subGoal.key_id === keys[0].id
-        && normalize(subGoal.title) === normalize(source.title),
-    );
-    if (matches.length > 1) {
+    if (candidates.length > 1 || sharedCandidate) {
       return {
         status: "AMBIGUOUS",
         disposition: "SKIP",
         label,
         source,
         sourceRefs: group.records,
-        matches: matches.map((match) => `${match.title} (${match.id})`),
-        note: "Multiple database sub-goals match the normalized key/title; none will be changed.",
+        matches: candidates.map((match) => `${match.title} (${match.id})`),
+        note: sharedCandidate
+          ? "One existing Sub Goal confidently matched more than one STOP Sub Goal; it will remain unchanged for review."
+          : "Multiple database Sub Goals confidently match this STOP Sub Goal; none will be changed.",
       };
     }
 
-    const match = matches[0];
+    const match = candidates[0];
+    const reconciled = Boolean(match && strategy === "TITLE_DESCRIPTION");
     return {
       status: match ? "MATCHED" : "UNMATCHED",
-      disposition: match ? "EXISTING" : "INSERT",
+      disposition: match ? (reconciled ? "RECONCILE" : "EXISTING") : "INSERT",
       label,
       source,
       sourceRefs: group.records,
       matches: match
         ? [`${match.title} (${match.id}; ${match.is_active ? "active" : "archived"})`]
         : [],
-      note: match
-        ? `Matched by global key and normalized title; ${match.is_active ? "the existing row will be preserved" : "--apply will reactivate it"}.`
-        : "No existing sub-goal matches; --apply will insert one row.",
+      note: reconciled
+        ? "Confident match from the existing title/description to the STOP full Sub Goal text; --apply will preserve this ID and canonicalize its title."
+        : match
+          ? `Matched by global key and normalized title; ${match.is_active ? "the existing row will be preserved" : "--apply will reactivate it"}.`
+          : "No existing Sub Goal confidently matches; --apply will insert one row.",
       localId: match?.id,
     };
   });
@@ -563,10 +701,19 @@ function reconcileTasks(
 ): ReconciliationRecord[] {
   return groups.map((group) => {
     const source = group.canonical;
-    const matches = snapshot.tasks.filter(
-      (task) => normalize(task.category) === normalize(source.category)
-        && normalize(task.title) === normalize(source.title),
-    );
+    const exact = snapshot.tasks.filter((task) => (
+      taskMatchStrategy(task.category, task.title, source.category, source.title) === "EXACT"
+    ));
+    const aliases = exact.length ? [] : snapshot.tasks.filter((task) => (
+      taskMatchStrategy(task.category, task.title, source.category, source.title)
+        === "CANONICAL_ALIAS"
+    ));
+    const strategy: TaskMatchStrategy = exact.length
+      ? "EXACT"
+      : aliases.length
+        ? "CANONICAL_ALIAS"
+        : "NONE";
+    const matches = exact.length ? exact : aliases;
     if (matches.length > 1) {
       return {
         status: "AMBIGUOUS",
@@ -575,22 +722,26 @@ function reconcileTasks(
         source,
         sourceRefs: group.records,
         matches: matches.map((task) => `${task.category} → ${task.title} (${task.id})`),
-        note: "Multiple task_master rows match the normalized category/title; none will be changed.",
+        note: "Multiple task_master rows match the canonical category/title; none will be changed.",
       };
     }
 
     const match = matches[0];
     return {
       status: match ? "MATCHED" : "UNMATCHED",
-      disposition: match ? "EXISTING" : "INSERT",
+      disposition: match
+        ? strategy === "CANONICAL_ALIAS" ? "RECONCILE" : "EXISTING"
+        : "INSERT",
       label: `${source.category} → ${source.title}`,
       source,
       sourceRefs: group.records,
       matches: match
         ? [`${match.category} → ${match.title} (${match.id}; ${match.is_active ? "active" : "archived"})`]
         : [],
-      note: match
-        ? `Matched by normalized category/title; ${match.is_active ? "the existing row will be preserved" : "--apply will reactivate it"}.`
+      note: strategy === "CANONICAL_ALIAS"
+        ? "Matched the CGI Modelling alias; --apply will preserve this ID and rename it to canonical Modeling."
+        : match
+          ? `Matched by normalized category/title; ${match.is_active ? "the existing row will be preserved" : "--apply will reactivate it"}.`
         : "No task_master row matches; --apply will insert one row.",
       localId: match?.id,
     };
@@ -690,12 +841,26 @@ function reconcileZohoMappings(
 function buildReport(sources: ImportSources, snapshot: DatabaseSnapshot): ImportReport {
   const subGoalGroups = groupSubGoals(sources.subGoals);
   const taskGroups = groupTasks(sources.tasks);
+  const subGoalResolutions = resolveSubGoalGroups(subGoalGroups, snapshot);
+  const matchedExistingSubGoalIds = new Set(
+    subGoalResolutions
+      .filter((resolution) => (
+        resolution.keys.length === 1
+        && resolution.candidates.length === 1
+        && !resolution.sharedCandidate
+      ))
+      .map((resolution) => resolution.candidates[0].id),
+  );
   const projects = reconcileProjects(sources.projects, snapshot);
   return {
     sources,
+    keys: snapshot.keys,
     subGoalGroups,
     taskGroups,
-    subGoals: reconcileSubGoals(subGoalGroups, snapshot),
+    subGoals: reconcileSubGoals(subGoalResolutions),
+    unmatchedExistingSubGoals: snapshot.subGoals.filter(
+      (subGoal) => !matchedExistingSubGoalIds.has(subGoal.id),
+    ),
     projects,
     tasks: reconcileTasks(taskGroups, snapshot),
     members: reconcileMembers(sources.members, snapshot),
@@ -713,15 +878,28 @@ function printSummary(report: ImportReport): void {
   const duplicateSubGoals = report.subGoalGroups.filter((group) => group.records.length > 1);
   const validTasks = report.sources.tasks.filter((source) => !source.validationError);
   const invalidTasks = report.sources.tasks.filter((source) => source.validationError);
+  const longestSubGoalTitle = Math.max(0, ...validSubGoals.map((source) => source.title.length));
+  const uniqueSubGoalIdentities = new Set(report.subGoalGroups.map((group) => group.identity));
+  const uniqueTaskIdentities = new Set(report.taskGroups.map((group) => group.identity));
 
   console.log("");
   console.log("=== REQUIRED DRY-RUN SUMMARY ===");
+  console.log(`Keys in database: ${report.keys.length}`);
   console.log(`Operation Sub Goals detected: ${validSubGoals.filter((source) => normalize(source.sheet) === "OPERATION").length}`);
   console.log(`Management Sub Goals detected: ${validSubGoals.filter((source) => normalize(source.sheet) === "MANAGEMENT").length}`);
   console.log(`blank Sub Goals skipped: ${blankSubGoals.length}`);
   console.log(`duplicate Sub Goals: ${duplicateSubGoals.length} normalized groups (${duplicateSubGoals.reduce((total, group) => total + group.records.length, 0)} source rows)`);
+  console.log(`Unique Sub Goals: ${report.subGoalGroups.length}`);
+  console.log(`Duplicate canonical Key + normalized Sub Goal identities: ${report.subGoalGroups.length - uniqueSubGoalIdentities.size}`);
+  console.log(`Longest populated Sub Goal title: ${longestSubGoalTitle} characters`);
+  console.log(`Sub Goals to insert: ${report.subGoals.filter((record) => record.disposition === "INSERT").length}`);
+  console.log(`Sub Goals to reconcile with preserved IDs: ${report.subGoals.filter((record) => record.disposition === "RECONCILE").length}`);
+  console.log(`Existing Sub Goals unmatched to STOP: ${report.unmatchedExistingSubGoals.length}`);
   console.log(`Tasks detected: ${validTasks.length}`);
+  console.log(`Unique canonical Tasks: ${report.taskGroups.length}`);
+  console.log(`Duplicate canonical category + normalized Task identities: ${report.taskGroups.length - uniqueTaskIdentities.size}`);
   console.log(`Tasks to insert: ${report.tasks.filter((record) => record.disposition === "INSERT").length}`);
+  console.log(`Tasks to reconcile with preserved IDs: ${report.tasks.filter((record) => record.disposition === "RECONCILE").length}`);
   console.log(`Tasks already existing: ${report.tasks.filter((record) => record.disposition === "EXISTING").length}`);
   console.log(`invalid task rows skipped: ${invalidTasks.length}`);
   console.log(`Projects matched/unmatched/ambiguous: ${countStatus(report.projects, "MATCHED")}/${countStatus(report.projects, "UNMATCHED")}/${countStatus(report.projects, "AMBIGUOUS")}`);
@@ -755,6 +933,19 @@ function printDuplicateSubGoals(groups: SourceGroup<SubGoalSource>[]): void {
   for (const group of groups) {
     console.log(`  ${group.canonical.keyCode} → ${group.canonical.title}`);
     group.records.forEach((source) => console.log(`    ↳ ${sourceLabel(source)}`));
+  }
+}
+
+function printUnmatchedExistingSubGoals(subGoals: ExistingSubGoal[]): void {
+  console.log("");
+  console.log("=== EXISTING SUB GOALS UNMATCHED TO STOP ===");
+  if (!subGoals.length) console.log("  (none)");
+  for (const subGoal of subGoals) {
+    console.log(
+      `  ${subGoal.key_code} → ${subGoal.title} (${subGoal.id}; ${subGoal.is_active ? "active" : "archived"})`,
+    );
+    if (subGoal.description) console.log(`    Description: ${subGoal.description}`);
+    console.log("    No confident one-to-one STOP match; this existing record remains untouched.");
   }
 }
 
@@ -811,6 +1002,7 @@ function printReport(report: ImportReport, apply: boolean): void {
   printBlankSubGoals(report.sources.subGoals.filter((source) => source.validationError));
   printDuplicateSubGoals(report.subGoalGroups.filter((group) => group.records.length > 1));
   printSection("SUB GOAL DATABASE RECONCILIATION", report.subGoals);
+  printUnmatchedExistingSubGoals(report.unmatchedExistingSubGoals);
   printSection("TASKS (CAC Projects Task Type → task_master)", report.tasks);
   printInvalidTasks(report.sources.tasks.filter((source) => source.validationError));
   printSection("PROJECTS (reconciliation only; never written)", report.projects);
@@ -852,69 +1044,84 @@ async function applySafeMasterData(
   await assertSubGoalTitleCapacity(client, report.subGoalGroups);
   const stats: ApplyStats = {
     subGoalsInserted: 0,
+    subGoalsReconciled: 0,
     subGoalsReactivated: 0,
     subGoalsExisting: 0,
     subGoalsSkipped: report.sources.subGoals.filter((source) => source.validationError).length,
     tasksInserted: 0,
+    tasksReconciled: 0,
     tasksReactivated: 0,
     tasksExisting: 0,
     tasksSkipped: report.sources.tasks.filter((source) => source.validationError).length,
   };
 
-  for (const group of report.subGoalGroups) {
+  for (const [index, group] of report.subGoalGroups.entries()) {
     const source = group.canonical;
+    const plan = report.subGoals[index];
+    if (plan.disposition === "SKIP") {
+      stats.subGoalsSkipped += 1;
+      continue;
+    }
+
     const keys = snapshot.keys.filter((key) => normalize(key.code) === source.keyCode);
     if (keys.length !== 1) {
       stats.subGoalsSkipped += 1;
       continue;
     }
-    const matches = snapshot.subGoals.filter(
-      (subGoal) => subGoal.key_id === keys[0].id
-        && normalize(subGoal.title) === normalize(source.title),
-    );
-    if (matches.length > 1) {
-      stats.subGoalsSkipped += 1;
-      continue;
-    }
 
     const description = mergedGroupDescription(group);
-    const existing = matches[0];
+    const existing = plan.localId
+      ? snapshot.subGoals.find((subGoal) => subGoal.id === plan.localId)
+      : undefined;
     if (existing) {
-      await client.query(
-        `UPDATE assignment_sub_goals
-            SET title = $2,
-                description = CASE
-                  WHEN NULLIF(BTRIM(description), '') IS NULL THEN $3
-                  ELSE description
-                END,
-                is_active = TRUE
-          WHERE id = $1`,
-        [existing.id, source.title, description],
-      );
-      if (existing.is_active) stats.subGoalsExisting += 1;
-      else stats.subGoalsReactivated += 1;
-    } else {
+      if (plan.disposition === "RECONCILE") {
+        await client.query(
+          `UPDATE assignment_sub_goals
+              SET title = $2,
+                  description = $3,
+                  is_active = TRUE
+            WHERE id = $1`,
+          [existing.id, source.title, description],
+        );
+        stats.subGoalsReconciled += 1;
+      } else {
+        await client.query(
+          `UPDATE assignment_sub_goals
+              SET title = $2,
+                  description = CASE
+                    WHEN NULLIF(BTRIM(description), '') IS NULL THEN $3
+                    ELSE description
+                  END,
+                  is_active = TRUE
+            WHERE id = $1`,
+          [existing.id, source.title, description],
+        );
+        if (existing.is_active) stats.subGoalsExisting += 1;
+        else stats.subGoalsReactivated += 1;
+      }
+    } else if (plan.disposition === "INSERT") {
       await client.query(
         `INSERT INTO assignment_sub_goals (key_id, title, description, is_active)
          VALUES ($1, $2, $3, TRUE)`,
         [keys[0].id, source.title, description],
       );
       stats.subGoalsInserted += 1;
+    } else {
+      stats.subGoalsSkipped += 1;
     }
   }
 
-  for (const group of report.taskGroups) {
+  for (const [index, group] of report.taskGroups.entries()) {
     const source = group.canonical;
-    const matches = snapshot.tasks.filter(
-      (task) => normalize(task.category) === normalize(source.category)
-        && normalize(task.title) === normalize(source.title),
-    );
-    if (matches.length > 1) {
+    const plan = report.tasks[index];
+    if (plan.disposition === "SKIP") {
       stats.tasksSkipped += 1;
       continue;
     }
 
-    const existing = matches[0];
+    const existing = plan.localId
+      ? snapshot.tasks.find((task) => task.id === plan.localId)
+      : undefined;
     if (existing) {
       await client.query(
         `UPDATE task_master
@@ -924,28 +1131,27 @@ async function applySafeMasterData(
           WHERE id = $1`,
         [existing.id, source.category, source.title],
       );
-      if (existing.is_active) stats.tasksExisting += 1;
+      if (plan.disposition === "RECONCILE") stats.tasksReconciled += 1;
+      else if (existing.is_active) stats.tasksExisting += 1;
       else stats.tasksReactivated += 1;
-    } else {
+    } else if (plan.disposition === "INSERT") {
       await client.query(
         `INSERT INTO task_master (category, title, is_active)
          VALUES ($1, $2, TRUE)`,
         [source.category, source.title],
       );
       stats.tasksInserted += 1;
+    } else {
+      stats.tasksSkipped += 1;
     }
   }
 
   const verification = await readDatabaseSnapshot(client);
-  for (const group of report.subGoalGroups) {
+  for (const [index, group] of report.subGoalGroups.entries()) {
+    if (report.subGoals[index].disposition === "SKIP") continue;
     const source = group.canonical;
     const keys = verification.keys.filter((key) => normalize(key.code) === source.keyCode);
     if (keys.length !== 1) continue;
-    const beforeMatches = snapshot.subGoals.filter(
-      (subGoal) => subGoal.key_id === keys[0].id
-        && normalize(subGoal.title) === normalize(source.title),
-    );
-    if (beforeMatches.length > 1) continue;
     const matches = verification.subGoals.filter(
       (subGoal) => subGoal.key_id === keys[0].id
         && normalize(subGoal.title) === normalize(source.title)
@@ -956,13 +1162,9 @@ async function applySafeMasterData(
     }
   }
 
-  for (const group of report.taskGroups) {
+  for (const [index, group] of report.taskGroups.entries()) {
+    if (report.tasks[index].disposition === "SKIP") continue;
     const source = group.canonical;
-    const beforeMatches = snapshot.tasks.filter(
-      (task) => normalize(task.category) === normalize(source.category)
-        && normalize(task.title) === normalize(source.title),
-    );
-    if (beforeMatches.length > 1) continue;
     const matches = verification.tasks.filter(
       (task) => normalize(task.category) === normalize(source.category)
         && normalize(task.title) === normalize(source.title)
@@ -981,10 +1183,12 @@ function printApplyStats(stats: ApplyStats): void {
   console.log("SAFE MASTER DATA IMPORT COMMITTED");
   console.log("============================================================");
   console.log(`Sub Goals inserted: ${stats.subGoalsInserted}`);
+  console.log(`Sub Goals reconciled with preserved IDs: ${stats.subGoalsReconciled}`);
   console.log(`Sub Goals reactivated: ${stats.subGoalsReactivated}`);
   console.log(`Sub Goals already existing: ${stats.subGoalsExisting}`);
   console.log(`Sub Goals skipped: ${stats.subGoalsSkipped}`);
   console.log(`Tasks inserted: ${stats.tasksInserted}`);
+  console.log(`Tasks reconciled with preserved IDs: ${stats.tasksReconciled}`);
   console.log(`Tasks reactivated: ${stats.tasksReactivated}`);
   console.log(`Tasks already existing: ${stats.tasksExisting}`);
   console.log(`Tasks skipped: ${stats.tasksSkipped}`);
