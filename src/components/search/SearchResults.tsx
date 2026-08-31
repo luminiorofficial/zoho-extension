@@ -8,9 +8,9 @@ import {
 
 import {
   Building2,
-  CheckSquare,
-  ClipboardList,
   FolderKanban,
+  KeyRound,
+  ListChecks,
   Loader2,
   Search,
   Target,
@@ -31,8 +31,8 @@ interface SearchResponse {
   results: {
     departments: SearchResultItem[];
     members: SearchResultItem[];
-    goals: SearchResultItem[];
-    actions: SearchResultItem[];
+    keys: SearchResultItem[];
+    subGoals: SearchResultItem[];
     projects: SearchResultItem[];
     tasks: SearchResultItem[];
   };
@@ -44,10 +44,10 @@ interface SearchResponse {
 const sectionIcons = {
   departments: Building2,
   members: Users,
-  goals: Target,
-  actions: CheckSquare,
+  keys: KeyRound,
+  subGoals: Target,
   projects: FolderKanban,
-  tasks: ClipboardList,
+  tasks: ListChecks,
 };
 
 const sections = [
@@ -60,12 +60,12 @@ const sections = [
     label: 'Members',
   },
   {
-    key: 'goals',
-    label: 'Goals',
+    key: 'keys',
+    label: 'Keys / Goals',
   },
   {
-    key: 'actions',
-    label: 'Actions',
+    key: 'subGoals',
+    label: 'Sub Goals',
   },
   {
     key: 'projects',
@@ -104,7 +104,7 @@ export default function SearchResults({
         const response = await fetch(
           `/api/search?q=${encodeURIComponent(
             query,
-          )}`,
+          )}&limit=20`,
           {
             cache: 'no-store',
           },
