@@ -141,15 +141,21 @@ function SummaryCell({
     CANCELLED: 0,
   };
   const days = dateRange(start, end);
+  const recordedStatuses: KeyAssignmentStatusCode[] = [];
   for (const workDate of days) {
-    counts[records[dailyKey(assignment.id, workDate)]?.status ?? 'NOT_STARTED'] += 1;
+    const record = records[dailyKey(assignment.id, workDate)];
+    if (record) recordedStatuses.push(record.status);
   }
-  const completion = Math.round((counts.DONE / days.length) * 100);
+  if (recordedStatuses.length === 0) {
+    return <span className="text-slate-300" title="No daily execution recorded">—</span>;
+  }
+  for (const status of recordedStatuses) counts[status] += 1;
+  const completion = Math.round((counts.DONE / recordedStatuses.length) * 100);
 
   return (
-    <div className="min-w-[116px]" title={`${counts.DONE} done, ${counts.IN_PROGRESS} in progress, ${counts.ON_HOLD} on hold, ${counts.CANCELLED} cancelled, ${counts.NOT_STARTED} not started`}>
+    <div className="min-w-[116px]" title={`${recordedStatuses.length} of ${days.length} days recorded: ${counts.DONE} done, ${counts.IN_PROGRESS} in progress, ${counts.ON_HOLD} on hold, ${counts.CANCELLED} cancelled, ${counts.NOT_STARTED} not started`}>
       <div className="mb-1.5 flex items-center justify-between text-[10px] font-semibold text-slate-600">
-        <span>{counts.DONE}/{days.length} done</span><span>{completion}%</span>
+        <span>{counts.DONE}/{recordedStatuses.length} done</span><span>{completion}%</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${completion}%` }} />
@@ -426,19 +432,20 @@ export default function DailyWorkTracker({
                           }
                           const isPlanned = column.start >= assignment.startDate && column.start <= assignment.endDate;
                           const key = dailyKey(assignment.id, column.start);
-                          const status = records[key]?.status ?? 'NOT_STARTED';
+                          const status = records[key]?.status;
                           const pending = pendingCells.has(key);
                           return (
                             <td key={column.key} className="border-b border-r border-slate-200 px-2 py-2 text-center">
                               {isPlanned ? (
                                 <div className="relative inline-block">
                                   <select
-                                    value={status}
+                                    value={status ?? ''}
                                     disabled={pending}
                                     aria-label={`${assignment.taskTitle} status on ${column.start}`}
                                     onChange={(event) => void saveStatus(assignment, column.start, event.target.value as KeyAssignmentStatusCode)}
-                                    className={`w-[108px] rounded-full border px-2 py-1.5 text-[10px] font-semibold outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-60 ${statusStyles[status]}`}
+                                    className={`w-[108px] rounded-full border px-2 py-1.5 text-[10px] font-semibold outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-60 ${status ? statusStyles[status] : 'border-slate-200 bg-white text-slate-400'}`}
                                   >
+                                    <option value="" disabled>—</option>
                                     {ASSIGNMENT_STATUS_OPTIONS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
                                   </select>
                                   {pending && <LoaderCircle size={11} className="absolute -right-1 -top-1 animate-spin text-blue-600" />}

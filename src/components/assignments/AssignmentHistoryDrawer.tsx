@@ -171,7 +171,7 @@ export default function AssignmentHistoryDrawer({
                 <tbody className="divide-y divide-slate-100">
                   {days.map((workDate) => {
                     const record = records[workDate];
-                    const status = record?.status ?? 'NOT_STARTED';
+                    const status = record?.status;
                     const pending = pendingDates.has(workDate);
                     return (
                       <tr key={workDate} className="hover:bg-slate-50/70">
@@ -179,11 +179,12 @@ export default function AssignmentHistoryDrawer({
                         <td className="px-4 py-3">
                           <select
                             aria-label={`Status for ${workDate}`}
-                            value={status}
+                            value={status ?? ''}
                             disabled={pending}
                             onChange={(event) => void save(workDate, event.target.value as KeyAssignmentStatusCode, notes[workDate] ?? '')}
-                            className={`w-32 rounded-full border px-2.5 py-1.5 text-xs font-semibold outline-none ${statusClass(status)}`}
+                            className={`w-32 rounded-full border px-2.5 py-1.5 text-xs font-semibold outline-none ${status ? statusClass(status) : 'border-slate-200 bg-white text-slate-400'}`}
                           >
+                            <option value="" disabled>—</option>
                             {ASSIGNMENT_STATUS_OPTIONS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
                           </select>
                         </td>
@@ -192,11 +193,11 @@ export default function AssignmentHistoryDrawer({
                             <input
                               value={notes[workDate] ?? ''}
                               maxLength={2_000}
-                              placeholder="Optional note"
+                              placeholder={status ? 'Optional note' : 'Choose a status first'}
                               onChange={(event) => setNotes((current) => ({ ...current, [workDate]: event.target.value }))}
                               className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-blue-500"
                             />
-                            <button type="button" disabled={pending} onClick={() => void save(workDate, status, notes[workDate] ?? '')} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50" title="Save note">
+                            <button type="button" disabled={pending || !status} onClick={() => status && void save(workDate, status, notes[workDate] ?? '')} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50" title={status ? 'Save note' : 'Choose a daily status first'}>
                               {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Save size={15} />}
                             </button>
                           </div>

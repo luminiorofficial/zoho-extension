@@ -45,7 +45,7 @@ async function run(): Promise<void> {
     max: 1,
   });
   try {
-    const result = await pool.query<{ table_exists: boolean; has_unique_constraint: boolean; has_assignment_fk: boolean }>(
+    const result = await pool.query<{ table_exists: boolean; has_unique_constraint: boolean; has_assignment_fk: boolean; has_unique_assignment_identity: boolean }>(
       `SELECT
          TO_REGCLASS('assignment_daily_status') IS NOT NULL AS table_exists,
          EXISTS (
@@ -59,12 +59,21 @@ async function run(): Promise<void> {
             WHERE conrelid = 'assignment_daily_status'::regclass
               AND contype = 'f'
               AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (assignment_id) REFERENCES key_assignments(id)%'
-         ) AS has_assignment_fk`,
+         ) AS has_assignment_fk,
+         EXISTS (
+           SELECT 1
+             FROM pg_indexes
+            WHERE schemaname = CURRENT_SCHEMA()
+              AND tablename = 'key_assignments'
+              AND indexname = 'ux_key_assignments_assignment_identity'
+              AND indexdef LIKE 'CREATE UNIQUE INDEX%member_id, key_id, sub_goal_id, project_id, task_id%'
+         ) AS has_unique_assignment_identity`,
     );
     const schema = result.rows[0];
     assert(schema.table_exists, 'assignment_daily_status must exist in PostgreSQL.');
     assert(schema.has_unique_constraint, 'assignment_id + work_date must be unique.');
     assert(schema.has_assignment_fk, 'Daily status must retain a foreign key to key_assignments.');
+    assert(schema.has_unique_assignment_identity, 'Assignment identity must be unique across member, key, sub goal, project, and task.');
   } finally {
     await pool.end();
   }

@@ -75,6 +75,12 @@ export async function POST(request: Request) {
     });
     return Response.json({ assignment: { id: assignment.id } }, { status: 201 });
   } catch (error) {
+    if (typeof error === 'object' && error && 'code' in error && error.code === '23505') {
+      return Response.json(
+        { error: 'This member already has the same key, sub goal, project, and task assignment.' },
+        { status: 409 },
+      );
+    }
     if (typeof error === 'object' && error && 'code' in error && error.code === '23514') {
       return Response.json(
         { error: 'Use an active sub goal, project, task, member, and a valid date range.' },
