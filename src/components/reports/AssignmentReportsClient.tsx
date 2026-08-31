@@ -27,6 +27,7 @@ export default function AssignmentReportsClient({
     <>
       <form method="GET" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <label className="text-sm font-medium text-slate-700">Team<select name="teamId" defaultValue={filters.teamId ?? ''} className={fieldClass}><option value="">All teams</option>{options.teams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label className="text-sm font-medium text-slate-700">Department<select name="departmentId" defaultValue={filters.departmentId ?? ''} className={fieldClass}><option value="">All departments</option>{options.departments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label className="text-sm font-medium text-slate-700">Project<select name="projectId" defaultValue={filters.projectId ?? ''} className={fieldClass}><option value="">All projects</option>{options.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label className="text-sm font-medium text-slate-700">Member<select name="memberId" defaultValue={filters.memberId ?? ''} className={fieldClass}><option value="">All members</option>{options.members.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -47,7 +48,7 @@ export default function AssignmentReportsClient({
 
       <section className="mt-8">
         <div className="mb-4"><h2 className="text-lg font-semibold text-slate-900">Assignments ({assignments.length})</h2><p className="mt-1 text-sm text-slate-500">Read-only data from the same Work Planning assignments.</p></div>
-        <AssignmentHierarchy assignments={assignments} view="report" />
+        <AssignmentHierarchy assignments={assignments} />
       </section>
     </>
   );

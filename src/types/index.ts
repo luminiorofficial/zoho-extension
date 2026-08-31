@@ -541,12 +541,23 @@ export interface UnifiedWorkReportItem {
     id: string;
     name: string;
   };
+  /** Team Alignment stores the canonical team label without a separate team table. */
+  team: {
+    id: string;
+    name: string;
+  } | null;
+  department: {
+    id: string;
+    name: string;
+  } | null;
   startDate: string;
   endDate: string;
   status: KeyAssignmentStatus;
 }
 
 export interface UnifiedWorkReportFilters {
+  /** The canonical Team Alignment team label. */
+  teamId?: string;
   departmentId?: string;
   keyId?: string;
   subGoalId?: string;

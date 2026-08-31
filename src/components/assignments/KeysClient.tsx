@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { Archive, Pencil, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-import StatusBadge from '@/components/common/StatusBadge';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
 import { SUB_GOAL_TITLE_MAX_LENGTH } from '@/lib/planner-validation';
 import type {
   AssignableMember,
@@ -55,12 +55,6 @@ function todayInIndia(): string {
   return new Intl.DateTimeFormat('en-CA', {
     year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata',
   }).format(new Date());
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
-  }).format(new Date(`${value}T00:00:00Z`));
 }
 
 async function apiRequest(url: string, method: string, body?: object) {
@@ -374,29 +368,17 @@ export default function KeysClient({ keys, assignments, projects, tasks, members
           <h2 className="text-lg font-semibold text-slate-900">All Assignments ({assignments.length})</h2>
           <p className="mt-1 text-sm text-slate-500">Every saved Work Planning assignment appears here.</p>
         </div>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Key</th><th className="px-4 py-3">Sub Goal</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Task</th><th className="px-4 py-3">Member</th><th className="px-4 py-3">Start Date</th><th className="px-4 py-3">End Date</th><th className="px-4 py-3">Status</th><th className="px-4 py-3"><span className="sr-only">Actions</span></th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {assignments.map((assignment) => (
-                  <tr key={assignment.id}>
-                    <td className="px-4 py-3 font-medium text-slate-800">{keyLabel(assignment.keyCode)}</td>
-                    <td className="px-4 py-3 text-slate-700">{assignment.subGoalTitle}</td>
-                    <td className="px-4 py-3"><p className="font-medium text-slate-800">{assignment.projectName}</p><p className="text-xs text-slate-500">{assignment.departmentName}</p></td>
-                    <td className="px-4 py-3"><p className="text-slate-800">{assignment.taskTitle}</p>{assignment.taskCategory !== 'General' && <p className="text-xs text-slate-500">{assignment.taskCategory}</p>}</td>
-                    <td className="px-4 py-3 text-slate-700">{assignment.memberName}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(assignment.startDate)}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(assignment.endDate)}</td>
-                    <td className="px-4 py-3"><StatusBadge status={assignment.status} size="sm" /></td>
-                    <td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => editAssignment(assignment)} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" title="Edit assignment"><Pencil size={15} /></button><button type="button" disabled={pending} onClick={() => void deleteAssignment(assignment.id)} className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 disabled:opacity-50" title="Delete assignment"><Trash2 size={15} /></button></div></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {!assignments.length && <p className="p-8 text-center text-sm text-slate-500">No assignments have been saved yet.</p>}
-        </div>
+        <AssignmentHierarchy
+          assignments={assignments}
+          emptyMessage="No assignments have been saved yet."
+          highlightedAssignmentId={editingAssignmentId}
+          renderDataActions={(assignment) => (
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => editAssignment(assignment)} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" title="Edit assignment"><Pencil size={15} /></button>
+              <button type="button" disabled={pending} onClick={() => void deleteAssignment(assignment.id)} className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 disabled:opacity-50" title="Delete assignment"><Trash2 size={15} /></button>
+            </div>
+          )}
+        />
       </section>
     </div>
   );

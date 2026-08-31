@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 
 import { Layout } from '@/components';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
+import { toKeyAssignment } from '@/lib/key-assignment-data';
 import { getStructureData } from '@/lib/structure-data';
 import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
@@ -18,6 +20,7 @@ export default async function DashboardPage() {
     getStructureData(),
     getUnifiedWorkReport(),
   ]);
+  const keyAssignments = assignments.map(toKeyAssignment);
 
   const totalGoals = departments.reduce(
     (total, department) => total + department.goals.length,
@@ -404,6 +407,18 @@ const totalMembers = activeMembers.length;
 
   </div>
 </div>
+
+      <section className="mt-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Work Assignments ({keyAssignments.length})
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Key → Sub Goal → Project → Task → Member → Data
+          </p>
+        </div>
+        <AssignmentHierarchy assignments={keyAssignments} />
+      </section>
     </Layout>
   );
 }

@@ -65,10 +65,10 @@ export default async function TaskDetailPage({
             Work Assignments ({assignments.length})
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Task → Key → Sub Goal → Project → Member → Dates
+            Key → Sub Goal → Project → Task → Member → Data
           </p>
         </div>
-        <AssignmentHierarchy assignments={assignments} view="report" />
+        <AssignmentHierarchy assignments={assignments} />
       </section>
     </Layout>
   );

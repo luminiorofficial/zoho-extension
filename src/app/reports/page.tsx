@@ -23,6 +23,7 @@ function statusValue(value: string | undefined): KeyAssignmentStatus | undefined
 
 export default async function ReportsPage({ searchParams }: PageProps<'/reports'>) {
   const query = await searchParams;
+  const teamId = one(query.teamId)?.trim() || undefined;
   const departmentId = one(query.departmentId);
   const projectId = one(query.projectId);
   const memberId = one(query.memberId);
@@ -32,6 +33,7 @@ export default async function ReportsPage({ searchParams }: PageProps<'/reports'
   const startDate = one(query.startDate);
   const endDate = one(query.endDate);
   const filters: KeyAssignmentFilters = {
+    teamId,
     departmentId: isUuid(departmentId) ? departmentId : undefined,
     projectId: isUuid(projectId) ? projectId : undefined,
     memberId: isUuid(memberId) ? memberId : undefined,
@@ -57,6 +59,7 @@ export default async function ReportsPage({ searchParams }: PageProps<'/reports'
       </div>
       <AssignmentReportsClient
         key={[
+          filters.teamId,
           filters.departmentId,
           filters.projectId,
           filters.memberId,

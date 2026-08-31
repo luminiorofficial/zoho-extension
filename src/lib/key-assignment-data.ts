@@ -19,6 +19,7 @@ import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export interface KeyAssignmentReportOptions {
   departments: ReportingOption[];
+  teams: ReportingOption[];
   projects: ReportingOption[];
   members: ReportingOption[];
   keys: ReportingOption[];
@@ -143,13 +144,20 @@ export async function getActiveMembersForAssignment(): Promise<AssignableMember[
 }
 
 export async function getKeyAssignmentReportOptions(): Promise<KeyAssignmentReportOptions> {
-  const [departments, projects, members, keys, subGoals, tasks] = await Promise.all([
+  const [departments, teams, projects, members, keys, subGoals, tasks] = await Promise.all([
     db.query<QueryResultRow & { id: string; name: string }>(
       `SELECT DISTINCT d.id, d.name
          FROM key_assignments ka
-         JOIN projects p ON p.id = ka.project_id
-         JOIN departments d ON d.id = p.department_id
+         JOIN members m ON m.id = ka.member_id
+         JOIN departments d ON d.id = m.current_department_id
         ORDER BY d.name`,
+    ),
+    db.query<QueryResultRow & { id: string; name: string }>(
+      `SELECT DISTINCT m.team AS id, m.team AS name
+         FROM key_assignments ka
+         JOIN members m ON m.id = ka.member_id
+        WHERE m.team IS NOT NULL
+        ORDER BY m.team`,
     ),
     db.query<QueryResultRow & { id: string; name: string; department_id: string }>(
       `SELECT DISTINCT p.id, p.name, p.department_id
@@ -184,6 +192,7 @@ export async function getKeyAssignmentReportOptions(): Promise<KeyAssignmentRepo
 
   return {
     departments: departments.rows,
+    teams: teams.rows,
     projects: projects.rows.map((row) => ({ id: row.id, name: row.name, departmentId: row.department_id })),
     members: members.rows,
     keys: keys.rows,

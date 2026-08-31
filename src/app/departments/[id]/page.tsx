@@ -44,9 +44,9 @@ export default async function DepartmentPage({ params }: PageProps<'/departments
       <section>
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-slate-900">Work Assignments ({assignments.length})</h2>
-          <p className="mt-1 text-sm text-slate-500">Department → Project → Key → Sub Goal → Task → Member → Dates</p>
+          <p className="mt-1 text-sm text-slate-500">Key → Sub Goal → Project → Task → Member → Data</p>
         </div>
-        <AssignmentHierarchy assignments={assignments} view="department" />
+        <AssignmentHierarchy assignments={assignments} />
       </section>
     </Layout>
   );

@@ -19,13 +19,16 @@ interface UnifiedWorkReportRow extends QueryResultRow {
   sub_goal_title: string;
   project_id: string;
   project_name: string;
-  department_id: string;
-  department_name: string;
+  project_department_id: string;
+  project_department_name: string;
   task_id: string;
   task_category: string;
   task_title: string;
   member_id: string;
   member_name: string;
+  member_team: string | null;
+  member_department_id: string | null;
+  member_department_name: string | null;
   start_date: string | Date;
   end_date: string | Date;
   status: string;
@@ -67,18 +70,23 @@ export async function getUnifiedWorkReport(
       ka.key_id, ak.code AS key_code, ak.title AS key_title,
       ka.sub_goal_id, sg.title AS sub_goal_title,
       ka.project_id, p.name AS project_name,
-      p.department_id, d.name AS department_name,
+      p.department_id AS project_department_id,
+      project_department.name AS project_department_name,
       ka.task_id, tm.category AS task_category, tm.title AS task_title,
-      ka.member_id, m.name AS member_name,
+      ka.member_id, m.name AS member_name, m.team AS member_team,
+      m.current_department_id AS member_department_id,
+      member_department.name AS member_department_name,
       ka.start_date, ka.end_date, ka.status
 
     FROM key_assignments ka
     JOIN assignment_keys ak ON ak.id = ka.key_id
     JOIN assignment_sub_goals sg ON sg.id = ka.sub_goal_id
     JOIN projects p ON p.id = ka.project_id
-    JOIN departments d ON d.id = p.department_id
+    JOIN departments project_department ON project_department.id = p.department_id
     JOIN task_master tm ON tm.id = ka.task_id
     JOIN members m ON m.id = ka.member_id
+    LEFT JOIN departments member_department
+      ON member_department.id = m.current_department_id
 
     WHERE ($1::uuid IS NULL OR ka.key_id = $1)
       AND ($2::uuid IS NULL OR ka.sub_goal_id = $2)
@@ -88,9 +96,14 @@ export async function getUnifiedWorkReport(
       AND ($6::varchar IS NULL OR ka.status = $6)
       AND ($7::date IS NULL OR ka.end_date >= $7)
       AND ($8::date IS NULL OR ka.start_date <= $8)
-      AND ($9::uuid IS NULL OR p.department_id = $9)
+      AND ($9::varchar IS NULL OR m.team = $9)
+      AND ($10::uuid IS NULL OR m.current_department_id = $10)
 
-    ORDER BY ka.start_date DESC, d.name, p.name, m.name
+    ORDER BY ka.start_date DESC,
+      member_department.name NULLS LAST,
+      m.team NULLS LAST,
+      p.name,
+      m.name
     `,
     [
       filters.keyId ?? null,
@@ -101,6 +114,7 @@ export async function getUnifiedWorkReport(
       databaseStatus(filters.status),
       filters.startDate ?? null,
       filters.endDate ?? null,
+      filters.teamId ?? null,
       filters.departmentId ?? null,
     ],
   );
@@ -119,8 +133,8 @@ export async function getUnifiedWorkReport(
     project: {
       id: row.project_id,
       name: row.project_name,
-      departmentId: row.department_id,
-      departmentName: row.department_name,
+      departmentId: row.project_department_id,
+      departmentName: row.project_department_name,
     },
     task: {
       id: row.task_id,
@@ -131,6 +145,15 @@ export async function getUnifiedWorkReport(
       id: row.member_id,
       name: row.member_name,
     },
+    team: row.member_team
+      ? { id: row.member_team, name: row.member_team }
+      : null,
+    department: row.member_department_id && row.member_department_name
+      ? {
+          id: row.member_department_id,
+          name: row.member_department_name,
+        }
+      : null,
     startDate: dateString(row.start_date),
     endDate: dateString(row.end_date),
     status: reportStatus(row.status),

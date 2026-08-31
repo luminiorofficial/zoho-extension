@@ -176,7 +176,7 @@ export default function ReportsClient({ data }: { data: ReportingData }) {
 
       <section className="mt-8">
         <div className="mb-4"><h2 className="font-semibold text-slate-900">Key Assignments ({data.keyAssignments.length})</h2><p className="mt-1 text-sm text-slate-500">Assignments matching the selected organisation, work, status, and date filters.</p></div>
-        <AssignmentHierarchy assignments={data.keyAssignments} view="report" />
+        <AssignmentHierarchy assignments={data.keyAssignments} />
       </section>
 
       <section className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
