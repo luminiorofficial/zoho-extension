@@ -26,3 +26,60 @@ select {
 button {
   cursor: pointer;
 }
+
+/* Work Planning: keep the tracker dense while making labels easier to read. */
+section[aria-labelledby="daily-tracker-title"] > div > div:first-child {
+  padding: 0.75rem 0.9rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] > div > div:first-child > div {
+  gap: 0.65rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] h2 {
+  font-size: 1.2rem;
+  line-height: 1.45rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] p,
+section[aria-labelledby="daily-tracker-title"] input,
+section[aria-labelledby="daily-tracker-title"] label {
+  font-size: 0.875rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] button {
+  font-size: 0.8125rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] table {
+  font-size: 0.8125rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] table th {
+  padding: 0.5rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] table td {
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8125rem;
+  line-height: 1.15rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] table td span,
+section[aria-labelledby="daily-tracker-title"] table td button {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] table select {
+  width: 7.25rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+section[aria-labelledby="daily-tracker-title"] table tbody tr {
+  min-height: 2.4rem;
+}
