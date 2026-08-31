@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
+import { FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
@@ -19,6 +19,19 @@ import StatusBadge from '@/components/common/StatusBadge';
 import GoalTaskHierarchy from '@/components/members/GoalTaskHierarchy';
 import CapacityBadge from '@/components/workload/CapacityBadge';
 import ProjectTaskCreator from '@/components/projects/ProjectTaskCreator';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
+import DailyWorkTracker from '@/components/assignments/DailyWorkTracker';
+import {
+  CompactDataTable,
+  DetailDrawer,
+  ManagementKpiRow,
+  ManagementPageHeader,
+  PageTabs,
+  ProgressSummary,
+  SectionHeading,
+  TruncatedText,
+} from '@/components/management/ManagementUI';
+import { assignmentMetrics, dateLabel, groupAssignments, uniqueCount } from '@/lib/management-metrics';
 
 import {
   getCapacityStatus,
@@ -31,6 +44,8 @@ import { PROJECT_STATUS_VALUES } from '@/lib/project-constants';
 import {
   PROJECT_STATUSES,
   type MemberWorkload,
+  type KeyAssignment,
+  type ProjectStatus,
   type ProjectDetail,
 } from '@/types';
 
@@ -1592,6 +1607,118 @@ export default function ProjectDetailClient({
           )}
         </div>
       </section>
+    </>
+  );
+}
+
+type ProjectManagementTab = 'overview' | 'team' | 'tasks' | 'tracker' | 'goals' | 'closure' | 'activity';
+
+export interface ManagementProject {
+  id: string;
+  name: string;
+  code: string | null;
+  clientName: string | null;
+  description: string | null;
+  departmentName: string;
+  ownerName: string | null;
+  startDate: string | null;
+  deadline: string | null;
+  status: ProjectStatus;
+  budget: number | null;
+  isActive: boolean;
+}
+
+export interface ManagementClosureItem {
+  id: string;
+  label: string;
+  assignedMemberName: string | null;
+  required: boolean;
+  completed: boolean;
+}
+
+function daysLeft(deadline: string | null, today: string): number | null {
+  if (!deadline) return null;
+  return Math.ceil((new Date(`${deadline}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86_400_000);
+}
+
+export function ProjectAssignmentDashboard({
+  project,
+  assignments,
+  closureItems,
+  initialToday,
+  headerAction,
+}: {
+  project: ManagementProject;
+  assignments: KeyAssignment[];
+  closureItems: ManagementClosureItem[];
+  initialToday: string;
+  headerAction?: ReactNode;
+}) {
+  const [tab, setTab] = useState<ProjectManagementTab>('overview');
+  const [selected, setSelected] = useState<KeyAssignment>();
+  const [selectedGoal, setSelectedGoal] = useState<KeyAssignment[]>();
+  const metrics = useMemo(() => assignmentMetrics(assignments, initialToday), [assignments, initialToday]);
+  const goalGroups = useMemo(() => groupAssignments(assignments, (item) => `${item.keyId}:${item.subGoalId}`), [assignments]);
+  const memberGroups = useMemo(() => groupAssignments(assignments, (item) => item.memberId), [assignments]);
+  const remainingDays = daysLeft(project.deadline, initialToday);
+  const completedClosure = closureItems.filter((item) => item.completed).length;
+
+  const taskTable = <CompactDataTable columns={[
+    { key: 'task', header: 'Task', render: (row: KeyAssignment) => <div><TruncatedText className="font-semibold text-slate-900">{row.taskTitle}</TruncatedText><TruncatedText className="text-xs text-slate-500">{row.taskCategory}</TruncatedText></div> },
+    { key: 'member', header: 'Member', render: (row: KeyAssignment) => <Link href={`/members/${row.memberId}`} onClick={(event) => event.stopPropagation()} className="font-medium text-blue-700 hover:underline"><TruncatedText>{row.memberName}</TruncatedText></Link> },
+    { key: 'goal', header: 'Key / Sub Goal', render: (row: KeyAssignment) => <div><span className="text-xs font-semibold text-blue-700">{row.keyCode.replaceAll('_', ' ')}</span><TruncatedText className="text-xs text-slate-500">{row.subGoalTitle}</TruncatedText></div> },
+    { key: 'dates', header: 'Dates', render: (row: KeyAssignment) => <span className="whitespace-nowrap text-xs">{dateLabel(row.startDate)} – {dateLabel(row.endDate)}</span> },
+    { key: 'status', header: 'Status', render: (row: KeyAssignment) => <StatusBadge status={row.status} size="sm" /> },
+  ]} rows={assignments} rowKey={(row) => row.id} onRowClick={setSelected} />;
+
+  const goalTable = <CompactDataTable columns={[
+    { key: 'key', header: 'Key', render: (rows: KeyAssignment[]) => <span className="font-semibold text-slate-800">{rows[0].keyCode.replaceAll('_', ' ')}</span> },
+    { key: 'goal', header: 'Sub Goal', render: (rows: KeyAssignment[]) => <TruncatedText>{rows[0].subGoalTitle}</TruncatedText> },
+    { key: 'members', header: 'Members', render: (rows: KeyAssignment[]) => uniqueCount(rows, (row) => row.memberId) },
+    { key: 'tasks', header: 'Tasks', render: (rows: KeyAssignment[]) => rows.length },
+    { key: 'progress', header: 'Progress', render: (rows: KeyAssignment[]) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+  ]} rows={goalGroups} rowKey={(rows) => `${rows[0].keyId}:${rows[0].subGoalId}`} onRowClick={setSelectedGoal} />;
+
+  return (
+    <>
+      <Link href="/projects" className="mb-3 inline-flex text-sm font-semibold text-blue-700 hover:underline">← All Projects</Link>
+      <ManagementPageHeader eyebrow="Project" title={project.name} meta={<span><StatusBadge status={project.status} size="sm" /> <span className="ml-2">{project.code ?? 'No job code'}{project.clientName ? ` · ${project.clientName}` : ''}</span></span>} actions={<>{!project.isActive && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">Archived</span>}{headerAction}</>} />
+      <ManagementKpiRow items={[
+        { label: 'Progress', value: `${metrics.completion}%`, tone: 'green' },
+        { label: 'Members', value: uniqueCount(assignments, (item) => item.memberId), tone: 'blue' },
+        { label: 'Tasks', value: assignments.length, tone: 'blue' },
+        { label: 'Done', value: metrics.done, tone: 'green' },
+        { label: 'Overdue', value: metrics.overdue, tone: metrics.overdue ? 'red' : 'slate' },
+        { label: 'Days Left', value: remainingDays === null ? '—' : remainingDays, detail: remainingDays !== null && remainingDays < 0 ? 'Past deadline' : undefined, tone: remainingDays !== null && remainingDays < 0 ? 'red' : 'amber' },
+      ]} />
+      <PageTabs active={tab} onChange={setTab} tabs={[
+        { id: 'overview', label: 'Overview' }, { id: 'team', label: 'Team', count: memberGroups.length },
+        { id: 'tasks', label: 'Tasks', count: assignments.length }, { id: 'tracker', label: 'Work Tracker' },
+        { id: 'goals', label: 'Goals', count: goalGroups.length }, { id: 'closure', label: 'Closure', count: closureItems.length },
+        { id: 'activity', label: 'Activity' },
+      ]} />
+
+      {tab === 'overview' && <div className="space-y-5"><section className="rounded-lg border border-slate-200 bg-white p-4"><SectionHeading title="Project details" /><dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3"><div><dt className="text-xs font-semibold uppercase text-slate-400">Owner</dt><dd className="mt-1 font-medium text-slate-800">{project.ownerName ?? '—'}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">Department</dt><dd className="mt-1 font-medium text-slate-800">{project.departmentName}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">Status</dt><dd className="mt-1"><StatusBadge status={project.status} size="sm" /></dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">Start Date</dt><dd className="mt-1 text-slate-700">{project.startDate ? dateLabel(project.startDate) : '—'}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">Deadline</dt><dd className="mt-1 text-slate-700">{project.deadline ? dateLabel(project.deadline) : '—'}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">Budget</dt><dd className="mt-1 text-slate-700">{project.budget === null ? '—' : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(project.budget)}</dd></div>{project.description && <div className="sm:col-span-2 lg:col-span-3"><dt className="text-xs font-semibold uppercase text-slate-400">Description</dt><dd className="mt-1 text-slate-700">{project.description}</dd></div>}</dl></section><section><SectionHeading title="Key / Sub Goal involvement" description="Select Tasks or Activity for assignment-level detail." />{goalTable}</section></div>}
+      {tab === 'team' && <><SectionHeading title="Project team" description="Members participating through project assignments." /><CompactDataTable columns={[
+        { key: 'member', header: 'Member', render: (rows: KeyAssignment[]) => <Link href={`/members/${rows[0].memberId}`} className="font-semibold text-blue-700 hover:underline">{rows[0].memberName}</Link> },
+        { key: 'tasks', header: 'Tasks', render: (rows: KeyAssignment[]) => rows.length },
+        { key: 'done', header: 'Done', render: (rows: KeyAssignment[]) => assignmentMetrics(rows, initialToday).done },
+        { key: 'overdue', header: 'Overdue', render: (rows: KeyAssignment[]) => assignmentMetrics(rows, initialToday).overdue },
+        { key: 'progress', header: 'Progress', render: (rows: KeyAssignment[]) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+      ]} rows={memberGroups} rowKey={(rows) => rows[0].memberId} /></>}
+      {tab === 'tasks' && <><SectionHeading title="Tasks" description="Compact assignment view; select a row for full hierarchy detail." />{taskTable}</>}
+      {tab === 'tracker' && <DailyWorkTracker assignments={assignments} initialDailyStatuses={assignments.flatMap((item) => item.dailyStatuses ?? [])} initialToday={initialToday} />}
+      {tab === 'goals' && <><SectionHeading title="Goals" description="KEY and Sub Goal progress for this project." />{goalTable}</>}
+      {tab === 'closure' && <><SectionHeading title="Closure" description={`${completedClosure}/${closureItems.length} checklist items complete.`} /><CompactDataTable columns={[
+        { key: 'item', header: 'Item', render: (item: ManagementClosureItem) => <TruncatedText className="font-semibold">{item.label}</TruncatedText> },
+        { key: 'owner', header: 'Assignee', render: (item: ManagementClosureItem) => item.assignedMemberName ?? 'Unassigned' },
+        { key: 'required', header: 'Required', render: (item: ManagementClosureItem) => item.required ? 'Yes' : 'No' },
+        { key: 'status', header: 'Status', render: (item: ManagementClosureItem) => <span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.completed ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{item.completed ? 'Complete' : 'Open'}</span> },
+      ]} rows={closureItems} rowKey={(item) => item.id} emptyMessage="No closure checklist has been created." /></>}
+      {tab === 'activity' && <><SectionHeading title="Detailed activity" description="Full KEY → Sub Goal → Task → Member hierarchy." /><AssignmentHierarchy assignments={assignments} hideColumns={['project']} /></>}
+
+      {selected && <DetailDrawer title={selected.taskTitle} subtitle={`${selected.memberName} · ${selected.keyCode.replaceAll('_', ' ')}`} onClose={() => setSelected(undefined)}><dl className="grid grid-cols-2 gap-4 text-sm"><div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Sub Goal</dt><dd className="mt-1 font-medium text-slate-800">{selected.subGoalTitle}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">Start</dt><dd className="mt-1">{dateLabel(selected.startDate)}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-400">End</dt><dd className="mt-1">{dateLabel(selected.endDate)}</dd></div><div className="col-span-2"><StatusBadge status={selected.status} size="sm" /></div></dl></DetailDrawer>}
+      {selectedGoal && <DetailDrawer title={selectedGoal[0].subGoalTitle} subtitle={`${selectedGoal[0].keyCode.replaceAll('_', ' ')} · ${selectedGoal.length} task assignment${selectedGoal.length === 1 ? '' : 's'}`} onClose={() => setSelectedGoal(undefined)}><AssignmentHierarchy assignments={selectedGoal} hideColumns={['project']} /></DetailDrawer>}
     </>
   );
 }

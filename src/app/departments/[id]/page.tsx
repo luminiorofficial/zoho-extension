@@ -2,9 +2,11 @@ import type { QueryResultRow } from 'pg';
 import { notFound } from 'next/navigation';
 
 import { Layout } from '@/components';
-import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
+import { DepartmentManagementDashboard } from '@/components/departments/DepartmentExecution';
+import { todayInIndia, trackerPeriod } from '@/lib/assignment-tracker-periods';
 import { db } from '@/lib/db';
-import { getKeyAssignments } from '@/lib/key-assignment-data';
+import { toKeyAssignment } from '@/lib/key-assignment-data';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,39 +17,54 @@ interface DepartmentRow extends QueryResultRow {
   is_active: boolean;
 }
 
+interface MemberRow extends QueryResultRow {
+  id: string;
+  name: string;
+  team: string | null;
+  role_title: string | null;
+  is_active: boolean;
+}
+
 export default async function DepartmentPage({ params }: PageProps<'/departments/[id]'>) {
   const { id } = await params;
-  const [departmentResult, assignments] = await Promise.all([
+  const today = todayInIndia();
+  const recent = trackerPeriod('RECENT_7', today);
+  const [departmentResult, memberResult, report] = await Promise.all([
     db.query<DepartmentRow>(
-      `SELECT id, name, description, is_active
-         FROM departments
-        WHERE id = $1
-        LIMIT 1`,
+      `SELECT id, name, description, is_active FROM departments WHERE id = $1 LIMIT 1`,
       [id],
     ),
-    getKeyAssignments({ departmentId: id }),
+    db.query<MemberRow>(
+      `SELECT id, name, team, role_title, is_active
+         FROM members
+        WHERE current_department_id = $1
+        ORDER BY is_active DESC, name`,
+      [id],
+    ),
+    getUnifiedWorkReport({
+      departmentId: id,
+      includeDailyStatuses: true,
+      dailyStatusStartDate: recent.start,
+      dailyStatusEndDate: recent.end,
+    }),
   ]);
   const department = departmentResult.rows[0];
   if (!department) notFound();
 
   return (
     <Layout>
-      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Department</p>
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">{department.name}</h1>
-          {!department.is_active && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">Inactive</span>}
-        </div>
-        {department.description && <p className="mt-2 text-sm text-slate-500">{department.description}</p>}
-      </div>
-
-      <section>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Work Assignments ({assignments.length})</h2>
-          <p className="mt-1 text-sm text-slate-500">Key → Sub Goal → Project → Task → Member → Data</p>
-        </div>
-        <AssignmentHierarchy assignments={assignments} />
-      </section>
+      <DepartmentManagementDashboard
+        department={{ id: department.id, name: department.name, description: department.description, isActive: department.is_active }}
+        members={memberResult.rows.map((member) => ({
+          id: member.id,
+          name: member.name,
+          team: member.team,
+          roleTitle: member.role_title,
+          isActive: member.is_active,
+        }))}
+        assignments={report.map(toKeyAssignment)}
+        initialToday={today}
+      />
     </Layout>
   );
 }

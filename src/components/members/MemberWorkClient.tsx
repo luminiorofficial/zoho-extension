@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   CalendarCheck2,
   CalendarDays,
@@ -16,13 +17,40 @@ import { useRouter } from 'next/navigation';
 
 import PeriodProgressCards from '@/components/common/PeriodProgressCards';
 import StatusBadge from '@/components/common/StatusBadge';
+import AssignmentFormModal from '@/components/assignments/AssignmentFormModal';
+import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
+import DailyWorkTracker from '@/components/assignments/DailyWorkTracker';
+import {
+  CompactDataTable,
+  DetailDrawer,
+  ManagementKpiRow,
+  ManagementPageHeader,
+  PageTabs,
+  ProgressSummary,
+  SectionHeading,
+  TruncatedText,
+  type CompactColumn,
+} from '@/components/management/ManagementUI';
 import WeeklyPlanner from '@/components/members/WeeklyPlanner';
+import {
+  assignmentMetrics,
+  dateLabel,
+  groupAssignments,
+  isAssignmentOverdue,
+  recordedCompletion,
+  uniqueCount,
+} from '@/lib/management-metrics';
 import { isoWeekStart } from '@/lib/planner-validation';
 import type {
   ActionStatus,
   DailyTask,
+  AssignableMember,
+  AssignableProject,
+  AssignmentKey,
+  KeyAssignment,
   Member,
   MemberWorkData,
+  TaskMasterItem,
 } from '@/types';
 
 interface MemberWorkClientProps {
@@ -591,6 +619,141 @@ export default function MemberWorkClient({ member, initialWork }: MemberWorkClie
         </div>
       </section>
 
+    </>
+  );
+}
+
+type MemberManagementTab = 'overview' | 'daily' | 'projects' | 'goals' | 'performance' | 'history';
+
+export interface ManagementMember {
+  id: string;
+  name: string;
+  email: string | null;
+  roleTitle: string | null;
+  team: string | null;
+  departmentName: string | null;
+  isActive: boolean;
+}
+
+interface MemberAssignmentDashboardProps {
+  member: ManagementMember;
+  assignments: KeyAssignment[];
+  keys: AssignmentKey[];
+  projects: AssignableProject[];
+  tasks: TaskMasterItem[];
+  members: AssignableMember[];
+  initialToday: string;
+}
+
+function AssignmentDrawerContent({ assignment }: { assignment: KeyAssignment }) {
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-5 text-sm">
+      <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Hierarchy</dt><dd className="mt-1 font-medium text-slate-800">{assignment.keyCode.replaceAll('_', ' ')} → {assignment.subGoalTitle} → {assignment.projectName} → {assignment.taskTitle} → {assignment.memberName}</dd></div>
+      <div><dt className="text-xs font-semibold uppercase text-slate-400">Department</dt><dd className="mt-1 text-slate-700">{assignment.departmentName}</dd></div>
+      <div><dt className="text-xs font-semibold uppercase text-slate-400">Category</dt><dd className="mt-1 text-slate-700">{assignment.taskCategory}</dd></div>
+      <div><dt className="text-xs font-semibold uppercase text-slate-400">Start</dt><dd className="mt-1 text-slate-700">{dateLabel(assignment.startDate)}</dd></div>
+      <div><dt className="text-xs font-semibold uppercase text-slate-400">End</dt><dd className="mt-1 text-slate-700">{dateLabel(assignment.endDate)}</dd></div>
+      <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Status</dt><dd className="mt-1"><StatusBadge status={assignment.status} size="sm" /></dd></div>
+    </dl>
+  );
+}
+
+export function MemberAssignmentDashboard({
+  member,
+  assignments,
+  keys,
+  projects,
+  tasks,
+  members,
+  initialToday,
+}: MemberAssignmentDashboardProps) {
+  const [tab, setTab] = useState<MemberManagementTab>('overview');
+  const [selected, setSelected] = useState<KeyAssignment>();
+  const [addingTask, setAddingTask] = useState(false);
+  const metrics = useMemo(() => assignmentMetrics(assignments, initialToday), [assignments, initialToday]);
+  const activeAssignments = assignments.filter((assignment) => !['Done', 'Cancelled'].includes(assignment.status));
+  const activeProjectCount = uniqueCount(activeAssignments, (assignment) => assignment.projectId);
+  const weeklyCompletion = recordedCompletion(assignments);
+  const projectGroups = useMemo(() => groupAssignments(assignments, (assignment) => assignment.projectId), [assignments]);
+  const goalGroups = useMemo(() => groupAssignments(assignments, (assignment) => `${assignment.keyId}:${assignment.subGoalId}`), [assignments]);
+  const overdue = assignments.filter((assignment) => isAssignmentOverdue(assignment, initialToday));
+
+  const assignmentColumns: CompactColumn<KeyAssignment>[] = [
+    { key: 'task', header: 'Task', render: (row) => <div><TruncatedText className="font-semibold text-slate-800">{row.taskTitle}</TruncatedText><TruncatedText className="text-xs text-slate-500">{row.projectName}</TruncatedText></div> },
+    { key: 'goal', header: 'Key / Sub Goal', render: (row) => <div><span className="text-xs font-semibold text-blue-700">{row.keyCode.replaceAll('_', ' ')}</span><TruncatedText className="text-xs text-slate-500">{row.subGoalTitle}</TruncatedText></div> },
+    { key: 'dates', header: 'Dates', render: (row) => <span className="whitespace-nowrap text-xs">{dateLabel(row.startDate)} – {dateLabel(row.endDate)}</span> },
+    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} size="sm" /> },
+  ];
+
+  return (
+    <>
+      <ManagementPageHeader
+        eyebrow="Member"
+        title={member.name}
+        meta={<><span>{member.departmentName ?? 'No department'} · {member.team ?? 'No team'} · {member.roleTitle ?? 'Designation not set'}</span>{member.email && <span className="ml-2 text-slate-400">· {member.email}</span>}</>}
+        actions={<>{!member.isActive && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">Inactive</span>}<button type="button" onClick={() => setAddingTask(true)} className="rounded-md bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Plus size={15} className="mr-1.5 inline" />Add Task</button></>}
+      />
+      <ManagementKpiRow items={[
+        { label: 'Active Projects', value: activeProjectCount, tone: 'blue' },
+        { label: 'Active Tasks', value: metrics.active, tone: 'blue' },
+        { label: 'Done', value: metrics.done, tone: 'green' },
+        { label: 'In Progress', value: metrics.inProgress, tone: 'blue' },
+        { label: 'Overdue', value: metrics.overdue, tone: metrics.overdue ? 'red' : 'slate' },
+        { label: 'Weekly Completion', value: `${weeklyCompletion}%`, detail: assignments.some((item) => item.dailyStatuses?.length) ? 'Recorded daily updates' : 'No updates recorded', tone: 'green' },
+      ]} />
+      <PageTabs active={tab} onChange={setTab} tabs={[
+        { id: 'overview', label: 'Overview' },
+        { id: 'daily', label: 'Daily Work' },
+        { id: 'projects', label: 'Projects', count: projectGroups.length },
+        { id: 'goals', label: 'Goals', count: goalGroups.length },
+        { id: 'performance', label: 'Performance' },
+        { id: 'history', label: 'History', count: assignments.length },
+      ]} />
+
+      {tab === 'overview' && (
+        <div className="grid gap-5 xl:grid-cols-2">
+          <section><SectionHeading title="Recent 7-day work" description="Latest recorded execution status." /><CompactDataTable columns={assignmentColumns} rows={assignments.filter((item) => item.dailyStatuses?.length).slice(0, 6)} rowKey={(row) => row.id} onRowClick={setSelected} emptyMessage="No daily updates recorded in the last 7 days." /></section>
+          <section><SectionHeading title="Overdue work" description="Open assignments past their planned end date." /><CompactDataTable columns={assignmentColumns} rows={overdue.slice(0, 6)} rowKey={(row) => row.id} onRowClick={setSelected} emptyMessage="No overdue work." /></section>
+          <section><SectionHeading title="Active projects" /><CompactDataTable minWidth={520} columns={[
+            { key: 'project', header: 'Project', render: (rows) => <Link href={`/projects/${rows[0].projectId}`} onClick={(event) => event.stopPropagation()} className="font-semibold text-blue-700 hover:underline"><TruncatedText>{rows[0].projectName}</TruncatedText></Link> },
+            { key: 'tasks', header: 'Tasks', render: (rows) => rows.length },
+            { key: 'progress', header: 'Progress', render: (rows) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+          ]} rows={projectGroups.filter((rows) => rows.some((row) => !['Done', 'Cancelled'].includes(row.status)))} rowKey={(rows) => rows[0].projectId} /> </section>
+          <section><SectionHeading title="Key / Sub Goal progress" /><CompactDataTable minWidth={560} columns={[
+            { key: 'key', header: 'Key', render: (rows) => <span className="font-semibold text-slate-800">{rows[0].keyCode.replaceAll('_', ' ')}</span> },
+            { key: 'goal', header: 'Sub Goal', render: (rows) => <TruncatedText>{rows[0].subGoalTitle}</TruncatedText> },
+            { key: 'progress', header: 'Progress', render: (rows) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+          ]} rows={goalGroups} rowKey={(rows) => `${rows[0].keyId}:${rows[0].subGoalId}`} /></section>
+        </div>
+      )}
+      {tab === 'daily' && <DailyWorkTracker assignments={assignments} initialDailyStatuses={assignments.flatMap((item) => item.dailyStatuses ?? [])} initialToday={initialToday} />}
+      {tab === 'projects' && <><SectionHeading title="Projects" description="All project involvement for this member." /><CompactDataTable columns={[
+        { key: 'project', header: 'Project', render: (rows) => <Link href={`/projects/${rows[0].projectId}`} className="font-semibold text-blue-700 hover:underline"><TruncatedText>{rows[0].projectName}</TruncatedText></Link> },
+        { key: 'department', header: 'Department', render: (rows) => rows[0].departmentName },
+        { key: 'tasks', header: 'Tasks', render: (rows) => rows.length },
+        { key: 'overdue', header: 'Overdue', render: (rows) => assignmentMetrics(rows, initialToday).overdue },
+        { key: 'progress', header: 'Progress', render: (rows) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+      ]} rows={projectGroups} rowKey={(rows) => rows[0].projectId} /></>}
+      {tab === 'goals' && <><SectionHeading title="Goals" description="KEY and Sub Goal assignment progress." /><CompactDataTable columns={[
+        { key: 'key', header: 'Key', render: (rows) => rows[0].keyCode.replaceAll('_', ' ') },
+        { key: 'goal', header: 'Sub Goal', render: (rows) => <TruncatedText>{rows[0].subGoalTitle}</TruncatedText> },
+        { key: 'projects', header: 'Projects', render: (rows) => uniqueCount(rows, (row) => row.projectId) },
+        { key: 'tasks', header: 'Tasks', render: (rows) => rows.length },
+        { key: 'progress', header: 'Progress', render: (rows) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+      ]} rows={goalGroups} rowKey={(rows) => `${rows[0].keyId}:${rows[0].subGoalId}`} /></>}
+      {tab === 'performance' && <><SectionHeading title="Performance by project" description="Completion and pressure signals from the same assignments." /><CompactDataTable columns={[
+        { key: 'project', header: 'Project', render: (rows) => <TruncatedText className="font-semibold">{rows[0].projectName}</TruncatedText> },
+        { key: 'done', header: 'Done', render: (rows) => assignmentMetrics(rows, initialToday).done },
+        { key: 'inProgress', header: 'In Progress', render: (rows) => assignmentMetrics(rows, initialToday).inProgress },
+        { key: 'overdue', header: 'Overdue', render: (rows) => <span className={assignmentMetrics(rows, initialToday).overdue ? 'font-semibold text-red-600' : ''}>{assignmentMetrics(rows, initialToday).overdue}</span> },
+        { key: 'progress', header: 'Completion', render: (rows) => <ProgressSummary value={assignmentMetrics(rows, initialToday).completion} /> },
+      ]} rows={projectGroups} rowKey={(rows) => rows[0].projectId} /></>}
+      {tab === 'history' && <><SectionHeading title="Assignment history" description="Full hierarchy and planned data; nothing has been removed." /><AssignmentHierarchy assignments={assignments} hideColumns={['member']} /></>}
+
+      {selected && <DetailDrawer title={selected.taskTitle} subtitle={`${selected.projectName} · ${selected.memberName}`} onClose={() => setSelected(undefined)}><AssignmentDrawerContent assignment={selected} /></DetailDrawer>}
+      {addingTask && keys[0] && (
+        <AssignmentFormModal keys={keys} projects={projects} tasks={tasks} members={members.filter((item) => item.id === member.id)} initialKeyId={keys[0].id} initialSubGoalId={keys[0].subGoals.find((item) => item.isActive)?.id ?? ''} onClose={() => setAddingTask(false)} />
+      )}
     </>
   );
 }

@@ -2,9 +2,16 @@ import type { QueryResultRow } from 'pg';
 import { notFound } from 'next/navigation';
 
 import { Layout } from '@/components';
-import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
+import { MemberAssignmentDashboard } from '@/components/members/MemberWorkClient';
+import { todayInIndia, trackerPeriod } from '@/lib/assignment-tracker-periods';
 import { db } from '@/lib/db';
-import { toKeyAssignment } from '@/lib/key-assignment-data';
+import {
+  getActiveMembersForAssignment,
+  getActiveProjectsForAssignment,
+  getAssignmentKeys,
+  getTaskMasterItems,
+  toKeyAssignment,
+} from '@/lib/key-assignment-data';
 import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +28,9 @@ interface MemberRow extends QueryResultRow {
 
 export default async function MemberPage({ params }: PageProps<'/members/[id]'>) {
   const { id } = await params;
-  const [memberResult, report] = await Promise.all([
+  const today = todayInIndia();
+  const recent = trackerPeriod('RECENT_7', today);
+  const [memberResult, report, keys, projects, tasks, members] = await Promise.all([
     db.query<MemberRow>(
       `SELECT m.id, m.name, m.email, m.role_title, m.team, m.is_active,
               d.name AS department_name
@@ -31,31 +40,39 @@ export default async function MemberPage({ params }: PageProps<'/members/[id]'>)
         LIMIT 1`,
       [id],
     ),
-    getUnifiedWorkReport({ memberId: id }),
+    getUnifiedWorkReport({
+      memberId: id,
+      includeDailyStatuses: true,
+      dailyStatusStartDate: recent.start,
+      dailyStatusEndDate: recent.end,
+    }),
+    getAssignmentKeys(),
+    getActiveProjectsForAssignment(),
+    getTaskMasterItems(),
+    getActiveMembersForAssignment(),
   ]);
-  const assignments = report.map(toKeyAssignment);
   const member = memberResult.rows[0];
   if (!member) notFound();
 
   return (
     <Layout>
-      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Member</p>
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">{member.name}</h1>
-          {!member.is_active && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">Inactive</span>}
-        </div>
-        <p className="mt-2 text-sm text-slate-500">{member.role_title ?? 'Role not set'}{member.department_name ? ` · ${member.department_name}` : ''}{member.team ? ` · ${member.team}` : ''}</p>
-        {member.email && <p className="mt-1 text-sm text-slate-500">{member.email}</p>}
-      </div>
-
-      <section>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Work Assignments ({assignments.length})</h2>
-          <p className="mt-1 text-sm text-slate-500">Key → Sub Goal → Project → Task → Data</p>
-        </div>
-        <AssignmentHierarchy assignments={assignments} hideColumns={['member']} />
-      </section>
+      <MemberAssignmentDashboard
+        member={{
+          id: member.id,
+          name: member.name,
+          email: member.email,
+          roleTitle: member.role_title,
+          team: member.team,
+          departmentName: member.department_name,
+          isActive: member.is_active,
+        }}
+        assignments={report.map(toKeyAssignment)}
+        keys={keys}
+        projects={projects}
+        tasks={tasks}
+        members={members}
+        initialToday={today}
+      />
     </Layout>
   );
 }

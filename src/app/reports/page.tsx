@@ -58,9 +58,10 @@ export default async function ReportsPage({ searchParams }: PageProps<'/reports'
 
   return (
     <Layout>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Work Planning Reports</h1>
-        <p className="mt-1 text-sm text-slate-500">Filter and review the same assignments saved on the Work Planning page.</p>
+      <div className="mb-4">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-600">Management</p>
+        <h1 className="mt-1 text-[1.65rem] font-bold leading-tight text-slate-950">Reports</h1>
+        <p className="mt-1 text-sm text-slate-500">Assignment, member, and project performance from the unified Work Planning data.</p>
       </div>
       <AssignmentReportsClient
         key={[
