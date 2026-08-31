@@ -26,6 +26,7 @@ export { default as MembersClient } from './members/MembersClient';
 export { default as ProjectForm } from './projects/ProjectForm';
 export { default as ProjectsClient } from './projects/ProjectsClient';
 export { default as ProjectDetailClient } from './projects/ProjectDetailClient';
+export { default as ProjectDeleteAction } from './projects/ProjectDeleteAction';
 
 export { default as CapacityBadge } from './workload/CapacityBadge';
 export { default as WorkloadClient } from './workload/WorkloadClient';

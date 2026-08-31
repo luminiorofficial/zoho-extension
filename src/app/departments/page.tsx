@@ -13,11 +13,16 @@ export default async function DepartmentsPage() {
     getUnifiedWorkReport(),
   ]);
 
+  // Department attribution must follow the assigned member's organisational
+  // department (key_assignments -> member_id -> members.current_department_id),
+  // never the project's department_id: a project can involve members from
+  // multiple departments, so counting by project would misattribute work.
   const assignmentCounts = Object.fromEntries(
     assignments.reduce((counts, assignment) => {
+      if (!assignment.department) return counts;
       counts.set(
-        assignment.project.departmentId,
-        (counts.get(assignment.project.departmentId) ?? 0) + 1,
+        assignment.department.id,
+        (counts.get(assignment.department.id) ?? 0) + 1,
       );
       return counts;
     }, new Map<string, number>()),

@@ -461,8 +461,7 @@ async function syncFetchedProjects(
     await client.query(
       `
       UPDATE projects AS project
-      SET is_active = TRUE,
-          code = CASE WHEN incoming.update_from_zoho THEN incoming.job_code ELSE project.code END,
+      SET code = CASE WHEN incoming.update_from_zoho THEN incoming.job_code ELSE project.code END,
           name = CASE
             WHEN incoming.update_from_zoho
              AND NOT EXISTS (

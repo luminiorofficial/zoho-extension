@@ -20,6 +20,8 @@ interface ProjectPatchPayload {
 
   status?: unknown;
   budget?: unknown;
+
+  isActive?: unknown;
 }
 
 const statuses = new Set([
@@ -587,6 +589,29 @@ export async function PATCH(
       );
     }
 
+    // -----------------------------------------------------
+    // ACTIVE / RESTORE
+    // -----------------------------------------------------
+
+    if ('isActive' in payload) {
+      if (typeof payload.isActive !== 'boolean') {
+        await client.query('ROLLBACK');
+
+        return Response.json(
+          {
+            error:
+              'Active status must be true or false.',
+          },
+          { status: 400 },
+        );
+      }
+
+      addChange(
+        'is_active',
+        payload.isActive,
+      );
+    }
+
     if (
       !changes.length
       && nextMemberIds === undefined
@@ -728,6 +753,143 @@ export async function PATCH(
         error:
           'Could not update the project.',
       },
+      { status: 500 },
+    );
+  } finally {
+    client.release();
+  }
+}
+
+// -----------------------------------------------------------
+// DELETE
+//
+// A project is never blindly hard-deleted. It is referenced by many
+// tables (key_assignments, week_goals, tasks, project_members,
+// project_closure_items, project_keys, and Zoho mappings), and several
+// of those are auto-populated the moment a project is created. So in
+// practice almost every project has at least one reference and is
+// archived (is_active = FALSE) instead of removed -- historical work
+// stays intact and readable everywhere it is already joined without an
+// is_active filter. A project is only hard-deleted when every one of
+// those tables has zero rows for it.
+// -----------------------------------------------------------
+
+interface ProjectReferenceCounts {
+  key_assignments: string;
+  week_goals: string;
+  tasks: string;
+  project_members: string;
+  project_closure_items: string;
+  project_keys: string;
+  zoho_mappings: string;
+}
+
+export async function DELETE(
+  _request: Request,
+  context: RouteContext<'/api/projects/[id]'>,
+) {
+  const { id } = await context.params;
+
+  if (!isUuid(id)) {
+    return Response.json(
+      { error: 'Invalid project id.' },
+      { status: 400 },
+    );
+  }
+
+  const client = await db.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const projectResult = await client.query<{
+      id: string;
+      department_id: string;
+      is_active: boolean;
+    }>(
+      `SELECT id, department_id, is_active
+         FROM projects
+        WHERE id = $1
+        FOR UPDATE`,
+      [id],
+    );
+
+    const project = projectResult.rows[0];
+
+    if (!project) {
+      await client.query('ROLLBACK');
+
+      return Response.json(
+        { error: 'Project not found.' },
+        { status: 404 },
+      );
+    }
+
+    const referenceResult = await client.query<ProjectReferenceCounts>(
+      `SELECT
+         (SELECT COUNT(*) FROM key_assignments WHERE project_id = $1) AS key_assignments,
+         (SELECT COUNT(*) FROM week_goals WHERE project_id = $1) AS week_goals,
+         (SELECT COUNT(*) FROM tasks WHERE project_id = $1) AS tasks,
+         (SELECT COUNT(*) FROM project_members WHERE project_id = $1) AS project_members,
+         (SELECT COUNT(*) FROM project_closure_items WHERE project_id = $1) AS project_closure_items,
+         (SELECT COUNT(*) FROM project_keys WHERE project_id = $1) AS project_keys,
+         (SELECT COUNT(*) FROM zoho_mappings WHERE entity_type = 'PROJECT' AND local_id = $1) AS zoho_mappings`,
+      [id],
+    );
+
+    const counts = referenceResult.rows[0];
+    const referenced = Object.values(counts).some((count) => Number(count) > 0);
+
+    if (!referenced) {
+      await client.query('DELETE FROM projects WHERE id = $1', [id]);
+      await client.query('COMMIT');
+
+      revalidatePath('/projects');
+      revalidatePath('/workload');
+      revalidatePath(`/departments/${project.department_id}`);
+      revalidatePath('/departments');
+      revalidatePath('/dashboard');
+
+      return Response.json({
+        project: { id, deleted: true, isActive: false },
+        message: 'The project had no work or historical data and was permanently deleted.',
+      });
+    }
+
+    if (!project.is_active) {
+      await client.query('ROLLBACK');
+
+      return Response.json({
+        project: { id, deleted: false, isActive: false },
+        message: 'This project is already archived. Historical data is preserved.',
+      });
+    }
+
+    await client.query(
+      `UPDATE projects SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
+      [id],
+    );
+    await client.query('COMMIT');
+
+    revalidatePath('/projects');
+    revalidatePath(`/projects/${id}`);
+    revalidatePath('/workload');
+    revalidatePath(`/departments/${project.department_id}`);
+    revalidatePath('/departments');
+    revalidatePath('/dashboard');
+    revalidatePath('/keys');
+
+    return Response.json({
+      project: { id, deleted: false, isActive: false },
+      message: 'This project has historical or active work data, so it was archived instead of deleted. Historical records are preserved and remain visible on past assignments.',
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+
+    console.error('Could not delete project:', error);
+
+    return Response.json(
+      { error: 'Could not delete the project.' },
       { status: 500 },
     );
   } finally {
