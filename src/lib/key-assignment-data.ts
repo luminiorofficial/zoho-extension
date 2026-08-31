@@ -223,6 +223,7 @@ export function toKeyAssignment(
     startDate: row.startDate,
     endDate: row.endDate,
     status: row.status,
+    dailyStatuses: row.dailyStatuses,
   };
 }
 

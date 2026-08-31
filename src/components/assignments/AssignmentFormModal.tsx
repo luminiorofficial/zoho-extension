@@ -4,6 +4,8 @@ import { FormEvent, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
+import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusCode } from '@/lib/assignment-status';
+import { todayInIndia } from '@/lib/assignment-tracker-periods';
 import type {
   AssignableMember,
   AssignableProject,
@@ -25,14 +27,6 @@ interface AssignmentFormModalProps {
 
 const fieldClass = 'mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 
-function databaseStatus(status?: KeyAssignment['status']): string {
-  return status ? status.toUpperCase().replaceAll(' ', '_') : 'NOT_STARTED';
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function AssignmentFormModal({
   keys,
   projects,
@@ -49,9 +43,9 @@ export default function AssignmentFormModal({
   const [projectId, setProjectId] = useState(assignment?.projectId ?? projects[0]?.id ?? '');
   const [taskId, setTaskId] = useState(assignment?.taskId ?? tasks.find((task) => task.isActive)?.id ?? '');
   const [memberId, setMemberId] = useState(assignment?.memberId ?? members[0]?.id ?? '');
-  const [startDate, setStartDate] = useState(assignment?.startDate ?? today());
-  const [endDate, setEndDate] = useState(assignment?.endDate ?? today());
-  const [status, setStatus] = useState(databaseStatus(assignment?.status));
+  const [startDate, setStartDate] = useState(assignment?.startDate ?? todayInIndia());
+  const [endDate, setEndDate] = useState(assignment?.endDate ?? todayInIndia());
+  const [status, setStatus] = useState(assignment ? assignmentStatusCode(assignment.status) : 'NOT_STARTED');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
@@ -102,6 +96,12 @@ export default function AssignmentFormModal({
   }
 
   const activeTasks = tasks.filter((task) => task.isActive || task.id === assignment?.taskId);
+  const availableProjects = assignment && !projects.some((project) => project.id === assignment.projectId)
+    ? [{ id: assignment.projectId, name: `${assignment.projectName} (Inactive)`, departmentId: assignment.departmentId, departmentName: assignment.departmentName }, ...projects]
+    : projects;
+  const availableMembers = assignment && !members.some((member) => member.id === assignment.memberId)
+    ? [{ id: assignment.memberId, name: `${assignment.memberName} (Inactive)` }, ...members]
+    : members;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label={assignment ? 'Edit assignment' : 'Add assignment'}>
@@ -118,16 +118,16 @@ export default function AssignmentFormModal({
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm font-medium text-slate-700">Key<select required value={keyId} onChange={(event) => changeKey(event.target.value)} className={fieldClass}>{keys.map((key) => <option key={key.id} value={key.id}>{key.code.replace('_', ' ')}: {key.title}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Sub Goal<select required value={subGoalId} onChange={(event) => setSubGoalId(event.target.value)} className={fieldClass}><option value="" disabled>Select a sub goal</option>{subGoals.map((subGoal) => <option key={subGoal.id} value={subGoal.id}>{subGoal.title}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700">Project<select required value={projectId} onChange={(event) => setProjectId(event.target.value)} className={fieldClass}><option value="" disabled>Select a project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.departmentName})</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Project<select required value={projectId} onChange={(event) => setProjectId(event.target.value)} className={fieldClass}><option value="" disabled>Select a project</option>{availableProjects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.departmentName})</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Task<select required value={taskId} onChange={(event) => setTaskId(event.target.value)} className={fieldClass}><option value="" disabled>Select an independent task</option>{activeTasks.map((task) => <option key={task.id} value={task.id}>{task.title}{task.category !== 'General' ? ` (${task.category})` : ''}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700">Member<select required value={memberId} onChange={(event) => setMemberId(event.target.value)} className={fieldClass}><option value="" disabled>Select a member</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700">Status<select value={status} onChange={(event) => setStatus(event.target.value)} className={fieldClass}><option value="NOT_STARTED">Not Started</option><option value="IN_PROGRESS">In Progress</option><option value="DONE">Done</option><option value="ON_HOLD">On Hold</option><option value="CANCELLED">Cancelled</option></select></label>
+            <label className="text-sm font-medium text-slate-700">Member<select required value={memberId} onChange={(event) => setMemberId(event.target.value)} className={fieldClass}><option value="" disabled>Select a member</option>{availableMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Overall Status<select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className={fieldClass}>{ASSIGNMENT_STATUS_OPTIONS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Start Date<input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={fieldClass} /></label>
             <label className="text-sm font-medium text-slate-700">End Date<input required type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} className={fieldClass} /></label>
           </div>
 
           {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-          {(!projects.length || !activeTasks.length || !members.length) && (
+          {(!availableProjects.length || !activeTasks.length || !availableMembers.length) && (
             <p className="mt-4 text-sm text-amber-700">At least one active project, Task Master record, and member are required.</p>
           )}
           <div className="mt-6 flex justify-end gap-3">

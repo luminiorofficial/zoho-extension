@@ -468,6 +468,23 @@ export type KeyAssignmentStatus =
   | 'On Hold'
   | 'Cancelled';
 
+export type KeyAssignmentStatusCode =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'DONE'
+  | 'ON_HOLD'
+  | 'CANCELLED';
+
+export interface AssignmentDailyStatus {
+  id: string;
+  assignmentId: string;
+  workDate: string;
+  status: KeyAssignmentStatusCode;
+  note?: string;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
 export interface AssignmentReportingOption extends ReportingOption {
   keyId: string;
 }
@@ -525,6 +542,7 @@ export interface KeyAssignment {
   startDate: string;
   endDate: string;
   status: KeyAssignmentStatus;
+  dailyStatuses?: AssignmentDailyStatus[];
 }
 
 export interface UnifiedWorkReportItem {
@@ -565,6 +583,7 @@ export interface UnifiedWorkReportItem {
   startDate: string;
   endDate: string;
   status: KeyAssignmentStatus;
+  dailyStatuses: AssignmentDailyStatus[];
 }
 
 export interface UnifiedWorkReportFilters {
@@ -579,6 +598,10 @@ export interface UnifiedWorkReportFilters {
   status?: KeyAssignmentStatus;
   startDate?: string;
   endDate?: string;
+  /** Include execution history without changing assignment-overlap filtering. */
+  includeDailyStatuses?: boolean;
+  dailyStatusStartDate?: string;
+  dailyStatusEndDate?: string;
 }
 
 export type KeyAssignmentFilters = UnifiedWorkReportFilters;

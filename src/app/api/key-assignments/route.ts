@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { isAssignmentStatusCode } from '@/lib/assignment-status';
 import { isDate, isUuid } from '@/lib/planner-validation';
 import { revalidateKeyAssignmentViews } from '@/lib/revalidate-assignments';
 
@@ -12,14 +13,6 @@ interface AssignmentPayload {
   endDate?: unknown;
   status?: unknown;
 }
-
-const statuses = new Set([
-  'NOT_STARTED',
-  'IN_PROGRESS',
-  'DONE',
-  'ON_HOLD',
-  'CANCELLED',
-]);
 
 export async function POST(request: Request) {
   let payload: AssignmentPayload;
@@ -39,7 +32,7 @@ export async function POST(request: Request) {
     || !isDate(payload.startDate)
     || !isDate(payload.endDate)
     || payload.endDate < payload.startDate
-    || !statuses.has(status)
+    || !isAssignmentStatusCode(status)
   ) {
     return Response.json(
       { error: 'Complete the assignment with valid selections, dates, and status.' },

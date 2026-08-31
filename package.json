@@ -11,6 +11,8 @@
     "db:test": "tsx scripts/database-tests.ts",
     "db:migrate:key-assignments": "node scripts/apply-key-assignment-migration.cjs",
     "db:migrate:work-planning-import": "node scripts/apply-work-planning-import-migration.cjs",
+    "db:migrate:assignment-daily-status": "node scripts/apply-assignment-daily-status-migration.cjs",
+    "daily-status:test": "tsx scripts/assignment-daily-status.test.ts",
     "assignment:test": "tsx scripts/key-assignment-flow.test.ts",
     "migration:test": "tsx --test scripts/import-stop-data.test.ts",
     "zoho:test": "tsx --test scripts/zoho-project-sync.test.ts",

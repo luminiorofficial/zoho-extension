@@ -1,19 +1,24 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ChevronDown, MoreVertical, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ClipboardList, History, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
-import { SUB_GOAL_TITLE_MAX_LENGTH } from '@/lib/planner-validation';
+import AssignmentFormModal from '@/components/assignments/AssignmentFormModal';
+import AssignmentHistoryDrawer from '@/components/assignments/AssignmentHistoryDrawer';
+import DailyWorkTracker from '@/components/assignments/DailyWorkTracker';
+import SubGoalManager from '@/components/assignments/SubGoalManager';
+import StatusBadge from '@/components/common/StatusBadge';
 import type {
   AssignableMember,
   AssignableProject,
+  AssignmentDailyStatus,
   AssignmentKey,
-  AssignmentSubGoal,
   KeyAssignment,
   TaskMasterItem,
 } from '@/types';
+
+type PlanningTab = 'TRACKER' | 'HISTORY' | 'SETUP';
 
 interface KeysClientProps {
   keys: AssignmentKey[];
@@ -21,546 +26,144 @@ interface KeysClientProps {
   projects: AssignableProject[];
   tasks: TaskMasterItem[];
   members: AssignableMember[];
+  initialDailyStatuses: AssignmentDailyStatus[];
+  initialToday: string;
 }
 
-interface AssignmentDraft {
-  keyId: string;
-  subGoalId: string;
-  projectId: string;
-  taskId: string;
-  memberId: string;
-  startDate: string;
-  endDate: string;
-  status: string;
+function plannedDates(assignment: KeyAssignment): string {
+  const format = (value: string) => new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${value}T00:00:00Z`));
+  return `${format(assignment.startDate)} – ${format(assignment.endDate)}`;
 }
 
-const inputClass = 'mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
-const assignmentStatuses = [
-  ['NOT_STARTED', 'Not Started'],
-  ['IN_PROGRESS', 'In Progress'],
-  ['DONE', 'Done'],
-  ['ON_HOLD', 'On Hold'],
-  ['CANCELLED', 'Cancelled'],
-] as const;
-
-function keyLabel(code: AssignmentKey['code']): string {
-  return code.replace('_', ' ');
-}
-
-function databaseStatus(status: KeyAssignment['status']): string {
-  return status.toUpperCase().replaceAll(' ', '_');
-}
-
-function todayInIndia(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata',
-  }).format(new Date());
-}
-
-async function apiRequest(url: string, method: string, body?: object) {
-  const response = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const result = await response.json() as { error?: string };
-  if (!response.ok) throw new Error(result.error ?? 'The request could not be completed.');
-}
-
-function SubGoalMenu({
-  isActive,
-  pending,
-  onEdit,
-  onToggleActive,
-}: {
-  isActive: boolean;
-  pending: boolean;
-  onEdit: () => void;
-  onToggleActive: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  return (
-    <div ref={menuRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-label="Sub goal actions"
-        aria-expanded={open}
-        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-      >
-        <MoreVertical size={16} />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          <button type="button" onClick={() => { setOpen(false); onEdit(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-            <Pencil size={14} />Edit
-          </button>
-          <button type="button" disabled={pending} onClick={() => { setOpen(false); onToggleActive(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-            {isActive ? <Archive size={14} /> : <RotateCcw size={14} />}
-            {isActive ? 'Archive' : 'Restore'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SubGoalItem({ subGoal }: { subGoal: AssignmentSubGoal }) {
-  const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(subGoal.title);
-  const [description, setDescription] = useState(subGoal.description ?? '');
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-
-  async function update(body: object) {
-    setPending(true);
-    setError('');
-    try {
-      await apiRequest(`/api/sub-goals/${subGoal.id}`, 'PATCH', body);
-      setEditing(false);
-      router.refresh();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not update the sub goal.');
-    } finally {
-      setPending(false);
-    }
-  }
-
-  if (editing) {
-    return (
-      <li className="px-1 py-3">
-        <form onSubmit={(event) => { event.preventDefault(); void update({ title, description }); }} className="space-y-2">
-          <input required aria-label="Sub goal title" value={title} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} className={inputClass} />
-          <textarea aria-label="Sub goal description" value={description} maxLength={2000} rows={2} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" className={inputClass} />
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 p-2 text-slate-600" title="Cancel edit"><X size={15} /></button>
-            <button disabled={pending} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Save</button>
-          </div>
-        </form>
-        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      </li>
-    );
-  }
-
-  return (
-    <li className="flex min-h-[64px] items-center justify-between gap-3 px-1 py-3 transition-colors hover:bg-slate-50">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate text-sm font-medium text-slate-800">{subGoal.title}</p>
-          {!subGoal.isActive && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">Archived</span>}
-        </div>
-        {subGoal.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{subGoal.description}</p>}
-      </div>
-      <SubGoalMenu
-        isActive={subGoal.isActive}
-        pending={pending}
-        onEdit={() => setEditing(true)}
-        onToggleActive={() => void update({ isActive: !subGoal.isActive })}
-      />
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </li>
-  );
-}
-
-function KeySection({
-  keyItem,
-  isExpanded,
-  onToggleExpand,
-  visibleSubGoals,
-  totalCount,
-  isSearching,
-  isAdding,
-  onStartAdd,
-  onCancelAdd,
-  addTitle,
-  addDescription,
-  onAddTitleChange,
-  onAddDescriptionChange,
-  onSubmitAdd,
-  addPending,
-  addError,
-}: {
-  keyItem: AssignmentKey;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  visibleSubGoals: AssignmentSubGoal[];
-  totalCount: number;
-  isSearching: boolean;
-  isAdding: boolean;
-  onStartAdd: () => void;
-  onCancelAdd: () => void;
-  addTitle: string;
-  addDescription: string;
-  onAddTitleChange: (value: string) => void;
-  onAddDescriptionChange: (value: string) => void;
-  onSubmitAdd: (event: FormEvent<HTMLFormElement>) => void;
-  addPending: boolean;
-  addError: string;
-}) {
-  return (
-    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 px-5 py-4">
-        <button
-          type="button"
-          onClick={onToggleExpand}
-          aria-expanded={isExpanded}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        >
-          <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
-          <span className="min-w-0 truncate">
-            <span className="font-semibold text-slate-900">{keyLabel(keyItem.code)}</span>
-            <span className="ml-2 text-sm text-slate-500">· {totalCount} Sub Goal{totalCount === 1 ? '' : 's'}</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onStartAdd}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50"
-        >
-          <Plus size={14} />Add Sub Goal
-        </button>
-      </div>
-
-      {isExpanded && (
-        <div className="border-t border-slate-100 px-5 py-4">
-          {isAdding && (
-            <form onSubmit={onSubmitAdd} className="mb-4 rounded-lg bg-blue-50/60 p-3">
-              <input required autoFocus value={addTitle} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => onAddTitleChange(event.target.value)} placeholder="Sub goal title" className={inputClass} />
-              <textarea value={addDescription} maxLength={2000} rows={2} onChange={(event) => onAddDescriptionChange(event.target.value)} placeholder="Optional description" className={inputClass} />
-              {addError && <p className="mt-2 text-xs text-red-600">{addError}</p>}
-              <div className="mt-3 flex justify-end gap-2">
-                <button type="button" onClick={onCancelAdd} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button disabled={addPending} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{addPending ? 'Adding...' : 'Add Sub Goal'}</button>
-              </div>
-            </form>
-          )}
-
-          {visibleSubGoals.length ? (
-            <ul className="divide-y divide-slate-100">
-              {visibleSubGoals.map((subGoal) => <SubGoalItem key={subGoal.id} subGoal={subGoal} />)}
-            </ul>
-          ) : (
-            <p className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">
-              {isSearching ? 'No sub goals match your search.' : 'No sub goals yet.'}
-            </p>
-          )}
-        </div>
-      )}
-    </article>
-  );
-}
-
-function SubGoalManager({ keys }: { keys: AssignmentKey[] }) {
-  const router = useRouter();
+function WorkHistory({ assignments }: { assignments: KeyAssignment[] }) {
   const [search, setSearch] = useState('');
-  const [expandedKeyId, setExpandedKeyId] = useState<string | undefined>(keys[0]?.id);
-  const [addingToKeyId, setAddingToKeyId] = useState<string>();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-
+  const [selected, setSelected] = useState<KeyAssignment>();
   const query = search.trim().toLowerCase();
-  const isSearching = query.length > 0;
+  const filtered = useMemo(() => assignments.filter((assignment) => !query || [
+    assignment.memberName,
+    assignment.taskTitle,
+    assignment.projectName,
+    assignment.subGoalTitle,
+    assignment.keyCode,
+  ].some((value) => value.toLowerCase().includes(query))), [assignments, query]);
+  const groups = useMemo(() => {
+    const grouped = new Map<string, KeyAssignment[]>();
+    for (const assignment of filtered) grouped.set(assignment.memberId, [...(grouped.get(assignment.memberId) ?? []), assignment]);
+    return [...grouped.values()].sort((left, right) => left[0].memberName.localeCompare(right[0].memberName));
+  }, [filtered]);
 
-  function visibleSubGoals(key: AssignmentKey): AssignmentSubGoal[] {
-    if (!isSearching) return key.subGoals;
-    return key.subGoals.filter((subGoal) => (
-      subGoal.title.toLowerCase().includes(query) || (subGoal.description ?? '').toLowerCase().includes(query)
-    ));
-  }
+  return (
+    <section>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div><h2 className="text-lg font-semibold text-slate-900">Work History</h2><p className="mt-1 text-sm text-slate-500">Open any member/task record to review notes and correct older daily statuses.</p></div>
+        <div className="relative w-full sm:w-72"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find member or task" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500" /></div>
+      </div>
+      <div className="space-y-4">
+        {groups.map((memberAssignments) => (
+          <article key={memberAssignments[0].memberId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between bg-slate-50 px-5 py-3"><h3 className="font-semibold text-slate-800">{memberAssignments[0].memberName}</h3><span className="text-xs text-slate-400">{memberAssignments.length} task assignment{memberAssignments.length === 1 ? '' : 's'}</span></div>
+            <div className="divide-y divide-slate-100">
+              {memberAssignments.map((assignment) => (
+                <div key={assignment.id} className="flex flex-wrap items-center gap-4 px-5 py-3 hover:bg-slate-50/60">
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800" title={assignment.taskTitle}>{assignment.taskTitle}</p><p className="mt-0.5 truncate text-xs text-slate-500" title={`${assignment.keyCode.replace('_', ' ')} → ${assignment.subGoalTitle} → ${assignment.projectName}`}>{assignment.keyCode.replace('_', ' ')} → {assignment.subGoalTitle} → {assignment.projectName}</p></div>
+                  <span className="whitespace-nowrap text-xs text-slate-400">{plannedDates(assignment)}</span>
+                  <button type="button" onClick={() => setSelected(assignment)} className="flex items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"><History size={14} />View History</button>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+        {!groups.length && <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center text-sm text-slate-500">No assignments match this search.</p>}
+      </div>
+      {selected && <AssignmentHistoryDrawer assignment={selected} onClose={() => setSelected(undefined)} />}
+    </section>
+  );
+}
 
-  function startAdd(keyId: string) {
-    setAddingToKeyId((current) => (current === keyId ? undefined : keyId));
-    setTitle('');
-    setDescription('');
-    setError('');
-    setExpandedKeyId(keyId);
-  }
+function AssignmentSetup({ keys, assignments, projects, tasks, members }: Omit<KeysClientProps, 'initialDailyStatuses' | 'initialToday'>) {
+  const router = useRouter();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<KeyAssignment>();
+  const [pendingId, setPendingId] = useState<string>();
+  const [error, setError] = useState('');
+  const initialKey = keys.find((key) => key.subGoals.some((subGoal) => subGoal.isActive)) ?? keys[0];
+  const initialSubGoal = initialKey?.subGoals.find((subGoal) => subGoal.isActive);
 
-  async function addSubGoal(event: FormEvent<HTMLFormElement>, keyId: string) {
-    event.preventDefault();
-    setPending(true);
+  async function removeAssignment(assignment: KeyAssignment) {
+    if (!window.confirm(`Delete ${assignment.memberName}'s assignment for “${assignment.taskTitle}”? Its daily history will also be removed.`)) return;
+    setPendingId(assignment.id);
     setError('');
     try {
-      await apiRequest('/api/sub-goals', 'POST', { keyId, title, description });
-      setAddingToKeyId(undefined);
-      setTitle('');
-      setDescription('');
+      const response = await fetch(`/api/key-assignments/${assignment.id}`, { method: 'DELETE' });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'Could not delete the assignment.');
       router.refresh();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not add the sub goal.');
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the assignment.');
     } finally {
-      setPending(false);
+      setPendingId(undefined);
     }
   }
 
-  const noMatches = isSearching && keys.every((key) => visibleSubGoals(key).length === 0);
+  function closeModal() {
+    setModalOpen(false);
+    setEditing(undefined);
+  }
 
   return (
-    <section className="mx-auto max-w-4xl">
-      <div className="relative mb-5">
-        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search sub goals..."
-          aria-label="Search sub goals"
-          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        />
+    <section className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-semibold text-slate-900">Assignment Setup</h2><p className="mt-1 text-sm text-slate-500">Maintain the hierarchy and planned dates separately from daily execution.</p></div><button type="button" onClick={() => setModalOpen(true)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"><Plus size={16} />Add Assignment</button></div>
+      <SubGoalManager keys={keys} />
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-4"><h3 className="font-semibold text-slate-900">Assignments ({assignments.length})</h3><p className="mt-1 text-sm text-slate-500">Overall status and planned dates remain on <code className="text-xs">key_assignments</code>.</p></div>
+        {error && <p className="border-b border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700">{error}</p>}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1040px] text-left text-xs">
+            <thead className="bg-slate-50 uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Member</th><th className="px-4 py-3">Key → Sub Goal</th><th className="px-4 py-3">Project → Task</th><th className="px-4 py-3">Planned dates</th><th className="px-4 py-3">Overall status</th><th className="px-4 py-3 text-right">Actions</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {assignments.map((assignment) => (
+                <tr key={assignment.id} className="hover:bg-slate-50/60">
+                  <td className="px-4 py-3 font-semibold text-slate-800">{assignment.memberName}</td>
+                  <td className="max-w-64 px-4 py-3"><p className="font-medium text-slate-700">{assignment.keyCode.replace('_', ' ')}</p><p className="truncate text-slate-500" title={assignment.subGoalTitle}>{assignment.subGoalTitle}</p></td>
+                  <td className="max-w-72 px-4 py-3"><p className="truncate font-medium text-slate-700" title={assignment.projectName}>{assignment.projectName}</p><p className="truncate text-slate-500" title={assignment.taskTitle}>{assignment.taskTitle}</p></td>
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-500">{plannedDates(assignment)}</td>
+                  <td className="px-4 py-3"><StatusBadge status={assignment.status} size="sm" /></td>
+                  <td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(assignment)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600" aria-label="Edit assignment"><Pencil size={14} /></button><button type="button" disabled={pendingId === assignment.id} onClick={() => void removeAssignment(assignment)} className="rounded-lg border border-red-100 p-2 text-red-500 hover:bg-red-50 disabled:opacity-50" aria-label="Delete assignment"><Trash2 size={14} /></button></div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!assignments.length && <p className="px-5 py-12 text-center text-sm text-slate-500">No assignments have been saved yet.</p>}
+        </div>
       </div>
-
-      <div className="space-y-4">
-        {keys.map((key) => {
-          const matches = visibleSubGoals(key);
-          const expanded = isSearching ? matches.length > 0 : expandedKeyId === key.id;
-          return (
-            <KeySection
-              key={key.id}
-              keyItem={key}
-              isExpanded={expanded}
-              onToggleExpand={() => setExpandedKeyId((current) => (current === key.id ? undefined : key.id))}
-              visibleSubGoals={matches}
-              totalCount={key.subGoals.length}
-              isSearching={isSearching}
-              isAdding={addingToKeyId === key.id}
-              onStartAdd={() => startAdd(key.id)}
-              onCancelAdd={() => setAddingToKeyId(undefined)}
-              addTitle={title}
-              addDescription={description}
-              onAddTitleChange={setTitle}
-              onAddDescriptionChange={setDescription}
-              onSubmitAdd={(event) => void addSubGoal(event, key.id)}
-              addPending={pending}
-              addError={error}
-            />
-          );
-        })}
-      </div>
-
-      {noMatches && (
-        <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
-          No sub goals match &ldquo;{search.trim()}&rdquo;.
-        </p>
+      {(modalOpen || editing) && initialKey && (
+        <AssignmentFormModal keys={keys} projects={projects} tasks={tasks} members={members} initialKeyId={editing?.keyId ?? initialKey.id} initialSubGoalId={editing?.subGoalId ?? initialSubGoal?.id ?? ''} assignment={editing} onClose={closeModal} />
       )}
     </section>
   );
 }
 
-export default function KeysClient({ keys, assignments, projects, tasks, members }: KeysClientProps) {
-  const router = useRouter();
-  const activeTasks = useMemo(() => tasks.filter((task) => task.isActive), [tasks]);
-  const firstKey = keys[0];
-  const initialDate = todayInIndia();
-  const emptyDraft = (): AssignmentDraft => ({
-    keyId: firstKey?.id ?? '',
-    subGoalId: firstKey?.subGoals.find((subGoal) => subGoal.isActive)?.id ?? '',
-    projectId: '',
-    taskId: '',
-    memberId: '',
-    startDate: initialDate,
-    endDate: initialDate,
-    status: 'NOT_STARTED',
-  });
-  const [draft, setDraft] = useState<AssignmentDraft>(emptyDraft);
-  const [editingAssignmentId, setEditingAssignmentId] = useState<string>();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-
-  const editingAssignment = useMemo(
-    () => assignments.find((assignment) => assignment.id === editingAssignmentId),
-    [assignments, editingAssignmentId],
-  );
-
-  const subGoals = useMemo(() => (
-    keys.find((key) => key.id === draft.keyId)?.subGoals.filter((subGoal) => (
-      subGoal.isActive || subGoal.id === editingAssignment?.subGoalId
-    )) ?? []
-  ), [draft.keyId, editingAssignment?.subGoalId, keys]);
-  const selectedSubGoalId = subGoals.some((subGoal) => subGoal.id === draft.subGoalId)
-    ? draft.subGoalId
-    : subGoals[0]?.id ?? '';
-  const availableProjects = useMemo(() => {
-    if (!editingAssignment || projects.some((project) => project.id === editingAssignment.projectId)) return projects;
-    return [{
-      id: editingAssignment.projectId,
-      name: `${editingAssignment.projectName} (Inactive)`,
-      departmentId: editingAssignment.departmentId,
-      departmentName: editingAssignment.departmentName,
-    }, ...projects];
-  }, [editingAssignment, projects]);
-  const availableTasks = useMemo(() => {
-    const currentTask = editingAssignment
-      ? tasks.find((task) => task.id === editingAssignment.taskId)
-      : undefined;
-    return currentTask && !currentTask.isActive
-      ? [{ ...currentTask, title: `${currentTask.title} (Archived)` }, ...activeTasks]
-      : activeTasks;
-  }, [activeTasks, editingAssignment, tasks]);
-  const availableMembers = useMemo(() => {
-    if (!editingAssignment || members.some((member) => member.id === editingAssignment.memberId)) return members;
-    return [{ id: editingAssignment.memberId, name: `${editingAssignment.memberName} (Inactive)` }, ...members];
-  }, [editingAssignment, members]);
-
-  function updateDraft(field: keyof AssignmentDraft, value: string) {
-    setDraft((current) => ({ ...current, [field]: value }));
-  }
-
-  function changeKey(keyId: string) {
-    const firstSubGoal = keys.find((key) => key.id === keyId)?.subGoals.find((subGoal) => subGoal.isActive);
-    setDraft((current) => ({ ...current, keyId, subGoalId: firstSubGoal?.id ?? '' }));
-  }
-
-  function resetForm() {
-    setEditingAssignmentId(undefined);
-    setDraft(emptyDraft());
-    setError('');
-  }
-
-  function editAssignment(assignment: KeyAssignment) {
-    setEditingAssignmentId(assignment.id);
-    setDraft({
-      keyId: assignment.keyId,
-      subGoalId: assignment.subGoalId,
-      projectId: assignment.projectId,
-      taskId: assignment.taskId,
-      memberId: assignment.memberId,
-      startDate: assignment.startDate,
-      endDate: assignment.endDate,
-      status: databaseStatus(assignment.status),
-    });
-    setError('');
-    setMessage('');
-    document.getElementById('assignment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  async function saveAssignment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    setError('');
-    setMessage('');
-    try {
-      const normalizedDraft = { ...draft, subGoalId: selectedSubGoalId };
-      let payload: object = normalizedDraft;
-      if (editingAssignment) {
-        const original: AssignmentDraft = {
-          keyId: editingAssignment.keyId,
-          subGoalId: editingAssignment.subGoalId,
-          projectId: editingAssignment.projectId,
-          taskId: editingAssignment.taskId,
-          memberId: editingAssignment.memberId,
-          startDate: editingAssignment.startDate,
-          endDate: editingAssignment.endDate,
-          status: databaseStatus(editingAssignment.status),
-        };
-        payload = Object.fromEntries(
-          (Object.keys(normalizedDraft) as (keyof AssignmentDraft)[])
-            .filter((field) => normalizedDraft[field] !== original[field])
-            .map((field) => [field, normalizedDraft[field]]),
-        );
-        if (!Object.keys(payload).length) {
-          setMessage('No assignment changes to save.');
-          return;
-        }
-      }
-      await apiRequest(
-        editingAssignmentId ? `/api/key-assignments/${editingAssignmentId}` : '/api/key-assignments',
-        editingAssignmentId ? 'PATCH' : 'POST',
-        payload,
-      );
-      const savedAsEdit = Boolean(editingAssignmentId);
-      resetForm();
-      setMessage(savedAsEdit ? 'Assignment updated.' : 'Assignment saved.');
-      router.refresh();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not save the assignment.');
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function deleteAssignment(id: string) {
-    if (!window.confirm('Delete this assignment? This cannot be undone.')) return;
-    setPending(true);
-    setError('');
-    setMessage('');
-    try {
-      await apiRequest(`/api/key-assignments/${id}`, 'DELETE');
-      if (editingAssignmentId === id) resetForm();
-      setMessage('Assignment deleted.');
-      router.refresh();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not delete the assignment.');
-    } finally {
-      setPending(false);
-    }
-  }
-
-  const unavailable = !editingAssignment && (!projects.length || !activeTasks.length || !members.length);
+export default function KeysClient(props: KeysClientProps) {
+  const [tab, setTab] = useState<PlanningTab>('TRACKER');
+  const tabs: { id: PlanningTab; label: string; icon: typeof ClipboardList }[] = [
+    { id: 'TRACKER', label: 'Daily Tracker', icon: ClipboardList },
+    { id: 'HISTORY', label: 'Work History', icon: History },
+    { id: 'SETUP', label: 'Assignment Setup', icon: Settings2 },
+  ];
 
   return (
-    <div className="space-y-8">
-      <SubGoalManager keys={keys} />
-
-      <section id="assignment-form" className="scroll-mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">{editingAssignmentId ? 'Edit Assignment' : 'New Assignment'}</h2>
-            <p className="mt-1 text-sm text-slate-500">Complete the flow in order. Only Sub Goal changes with the selected Key.</p>
-          </div>
-          {editingAssignmentId && <button type="button" onClick={resetForm} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><X size={15} />Cancel Edit</button>}
-        </div>
-
-        <form onSubmit={(event) => void saveAssignment(event)}>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">1.</span>Key<select required value={draft.keyId} onChange={(event) => changeKey(event.target.value)} className={inputClass}><option value="" disabled>Select a key</option>{keys.map((key) => <option key={key.id} value={key.id}>{keyLabel(key.code)}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">2.</span>Sub Goal<select required value={selectedSubGoalId} onChange={(event) => updateDraft('subGoalId', event.target.value)} className={inputClass}><option value="" disabled>Select a sub goal</option>{subGoals.map((subGoal) => <option key={subGoal.id} value={subGoal.id}>{subGoal.title}{!subGoal.isActive ? ' (Archived)' : ''}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">3.</span>Project<select required value={draft.projectId} onChange={(event) => updateDraft('projectId', event.target.value)} className={inputClass}><option value="" disabled>Select a project</option>{availableProjects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.departmentName})</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">4.</span>Task<select required value={draft.taskId} onChange={(event) => updateDraft('taskId', event.target.value)} className={inputClass}><option value="" disabled>Select a Task Master record</option>{availableTasks.map((task) => <option key={task.id} value={task.id}>{task.title}{task.category !== 'General' ? ` (${task.category})` : ''}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">5.</span>Member<select required value={draft.memberId} onChange={(event) => updateDraft('memberId', event.target.value)} className={inputClass}><option value="" disabled>Select a member</option>{availableMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">6.</span>Start Date<input required type="date" value={draft.startDate} onChange={(event) => updateDraft('startDate', event.target.value)} className={inputClass} /></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">7.</span>End Date<input required type="date" min={draft.startDate} value={draft.endDate} onChange={(event) => updateDraft('endDate', event.target.value)} className={inputClass} /></label>
-            <label className="text-sm font-medium text-slate-700"><span className="mr-1 text-blue-600">8.</span>Status<select required value={draft.status} onChange={(event) => updateDraft('status', event.target.value)} className={inputClass}>{assignmentStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <button type="submit" disabled={pending || unavailable || !selectedSubGoalId || !draft.projectId || !draft.taskId || !draft.memberId} className="mt-auto flex h-[42px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Save size={16} /><span className="text-blue-100">9.</span>{pending ? 'Saving...' : 'Save'}</button>
-          </div>
-        </form>
-
-        {unavailable && <p className="mt-4 text-sm text-amber-700">At least one active project, Task Master record, and member are required.</p>}
-        {error && <p className="mt-4 text-sm text-red-600" role="alert">{error}</p>}
-        {message && <p className="mt-4 text-sm text-emerald-700" role="status">{message}</p>}
-      </section>
-
-      <section>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">All Assignments ({assignments.length})</h2>
-          <p className="mt-1 text-sm text-slate-500">Every saved Work Planning assignment appears here.</p>
-        </div>
-        <AssignmentHierarchy
-          assignments={assignments}
-          emptyMessage="No assignments have been saved yet."
-          highlightedAssignmentId={editingAssignmentId}
-          renderDataActions={(assignment) => (
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => editAssignment(assignment)} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" title="Edit assignment"><Pencil size={15} /></button>
-              <button type="button" disabled={pending} onClick={() => void deleteAssignment(assignment.id)} className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 disabled:opacity-50" title="Delete assignment"><Trash2 size={15} /></button>
-            </div>
-          )}
-        />
-      </section>
+    <div>
+      <nav className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm" aria-label="Work Planning sections">
+        {tabs.map((item) => {
+          const Icon = item.icon;
+          return <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-current={tab === item.id ? 'page' : undefined} className={`flex min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${tab === item.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}><Icon size={16} />{item.label}</button>;
+        })}
+      </nav>
+      {tab === 'TRACKER' && <DailyWorkTracker assignments={props.assignments} initialDailyStatuses={props.initialDailyStatuses} initialToday={props.initialToday} />}
+      {tab === 'HISTORY' && <WorkHistory assignments={props.assignments} />}
+      {tab === 'SETUP' && <AssignmentSetup keys={props.keys} assignments={props.assignments} projects={props.projects} tasks={props.tasks} members={props.members} />}
     </div>
   );
 }

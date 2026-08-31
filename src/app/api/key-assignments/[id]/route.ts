@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { isAssignmentStatusCode } from '@/lib/assignment-status';
 import { isDate, isUuid } from '@/lib/planner-validation';
 import { revalidateKeyAssignmentViews } from '@/lib/revalidate-assignments';
 
@@ -20,14 +21,6 @@ interface AssignmentScope {
   start_date: string;
   end_date: string;
 }
-
-const statuses = new Set([
-  'NOT_STARTED',
-  'IN_PROGRESS',
-  'DONE',
-  'ON_HOLD',
-  'CANCELLED',
-]);
 
 function refreshScope(scope: AssignmentScope) {
   revalidateKeyAssignmentViews({
@@ -98,7 +91,7 @@ export async function PATCH(
     add('end_date', payload.endDate);
   }
   if ('status' in payload) {
-    if (typeof payload.status !== 'string' || !statuses.has(payload.status)) {
+    if (!isAssignmentStatusCode(payload.status)) {
       return Response.json({ error: 'Invalid assignment status.' }, { status: 400 });
     }
     add('status', payload.status);

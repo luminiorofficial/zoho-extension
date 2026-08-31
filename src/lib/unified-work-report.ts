@@ -2,6 +2,8 @@ import 'server-only';
 
 import type { QueryResultRow } from 'pg';
 
+import { getAssignmentDailyStatuses } from '@/lib/assignment-daily-status-data';
+import { assignmentStatusCode, assignmentStatusLabel } from '@/lib/assignment-status';
 import { db } from '@/lib/db';
 import type {
   AssignmentKeyCode,
@@ -43,16 +45,8 @@ function dateString(value: string | Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function reportStatus(status: string): KeyAssignmentStatus {
-  if (status === 'DONE') return 'Done';
-  if (status === 'IN_PROGRESS') return 'In Progress';
-  if (status === 'ON_HOLD') return 'On Hold';
-  if (status === 'CANCELLED') return 'Cancelled';
-  return 'Not Started';
-}
-
 function databaseStatus(status?: KeyAssignmentStatus): string | null {
-  return status?.toUpperCase().replaceAll(' ', '_') ?? null;
+  return status ? assignmentStatusCode(status) : null;
 }
 
 /**
@@ -119,7 +113,7 @@ export async function getUnifiedWorkReport(
     ],
   );
 
-  return result.rows.map((row) => ({
+  const report: UnifiedWorkReportItem[] = result.rows.map((row) => ({
     id: row.id,
     key: {
       id: row.key_id,
@@ -156,6 +150,26 @@ export async function getUnifiedWorkReport(
       : null,
     startDate: dateString(row.start_date),
     endDate: dateString(row.end_date),
-    status: reportStatus(row.status),
+    status: assignmentStatusLabel(row.status),
+    dailyStatuses: [],
+  }));
+
+  if (!filters.includeDailyStatuses || report.length === 0) return report;
+
+  const dailyStatuses = await getAssignmentDailyStatuses({
+    assignmentIds: report.map((item) => item.id),
+    startDate: filters.dailyStatusStartDate,
+    endDate: filters.dailyStatusEndDate,
+  });
+  const byAssignment = new Map<string, typeof dailyStatuses>();
+  for (const dailyStatus of dailyStatuses) {
+    const current = byAssignment.get(dailyStatus.assignmentId) ?? [];
+    current.push(dailyStatus);
+    byAssignment.set(dailyStatus.assignmentId, current);
+  }
+
+  return report.map((item) => ({
+    ...item,
+    dailyStatuses: byAssignment.get(item.id) ?? [],
   }));
 }

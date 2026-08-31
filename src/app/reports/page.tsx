@@ -46,7 +46,12 @@ export default async function ReportsPage({ searchParams }: PageProps<'/reports'
   };
 
   const [report, options] = await Promise.all([
-    getUnifiedWorkReport(filters),
+    getUnifiedWorkReport({
+      ...filters,
+      includeDailyStatuses: Boolean(filters.startDate && filters.endDate),
+      dailyStatusStartDate: filters.startDate,
+      dailyStatusEndDate: filters.endDate,
+    }),
     getKeyAssignmentReportOptions(),
   ]);
   const assignments = report.map(toKeyAssignment);
