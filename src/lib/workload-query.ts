@@ -228,7 +228,9 @@ export const MEMBER_WORKLOAD_QUERY = `
        )::date
 
   WHERE
-    (
+    m.is_active = TRUE
+
+    AND (
       $1::uuid[] IS NULL
 
       OR m.id =
