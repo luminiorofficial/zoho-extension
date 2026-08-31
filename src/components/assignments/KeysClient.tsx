@@ -1,7 +1,7 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
-import { Archive, Pencil, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Archive, ChevronDown, MoreVertical, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import AssignmentHierarchy from '@/components/assignments/AssignmentHierarchy';
@@ -67,6 +67,55 @@ async function apiRequest(url: string, method: string, body?: object) {
   if (!response.ok) throw new Error(result.error ?? 'The request could not be completed.');
 }
 
+function SubGoalMenu({
+  isActive,
+  pending,
+  onEdit,
+  onToggleActive,
+}: {
+  isActive: boolean;
+  pending: boolean;
+  onEdit: () => void;
+  onToggleActive: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="Sub goal actions"
+        aria-expanded={open}
+        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          <button type="button" onClick={() => { setOpen(false); onEdit(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+            <Pencil size={14} />Edit
+          </button>
+          <button type="button" disabled={pending} onClick={() => { setOpen(false); onToggleActive(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            {isActive ? <Archive size={14} /> : <RotateCcw size={14} />}
+            {isActive ? 'Archive' : 'Restore'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SubGoalItem({ subGoal }: { subGoal: AssignmentSubGoal }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -89,9 +138,9 @@ function SubGoalItem({ subGoal }: { subGoal: AssignmentSubGoal }) {
     }
   }
 
-  return (
-    <li className={`rounded-lg border px-3 py-3 ${subGoal.isActive ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
-      {editing ? (
+  if (editing) {
+    return (
+      <li className="px-1 py-3">
         <form onSubmit={(event) => { event.preventDefault(); void update({ title, description }); }} className="space-y-2">
           <input required aria-label="Sub goal title" value={title} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} className={inputClass} />
           <textarea aria-label="Sub goal description" value={description} maxLength={2000} rows={2} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" className={inputClass} />
@@ -100,33 +149,146 @@ function SubGoalItem({ subGoal }: { subGoal: AssignmentSubGoal }) {
             <button disabled={pending} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Save</button>
           </div>
         </form>
-      ) : (
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium text-slate-800">{subGoal.title}</p>
-              {!subGoal.isActive && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">Archived</span>}
-            </div>
-            {subGoal.description && <p className="mt-1 text-xs text-slate-500">{subGoal.description}</p>}
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <button type="button" onClick={() => setEditing(true)} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" title="Edit sub goal"><Pencil size={15} /></button>
-            <button type="button" disabled={pending} onClick={() => void update({ isActive: !subGoal.isActive })} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-50" title={subGoal.isActive ? 'Archive sub goal' : 'Restore sub goal'}>{subGoal.isActive ? <Archive size={15} /> : <RotateCcw size={15} />}</button>
-          </div>
+        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex min-h-[64px] items-center justify-between gap-3 px-1 py-3 transition-colors hover:bg-slate-50">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium text-slate-800">{subGoal.title}</p>
+          {!subGoal.isActive && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">Archived</span>}
+        </div>
+        {subGoal.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{subGoal.description}</p>}
+      </div>
+      <SubGoalMenu
+        isActive={subGoal.isActive}
+        pending={pending}
+        onEdit={() => setEditing(true)}
+        onToggleActive={() => void update({ isActive: !subGoal.isActive })}
+      />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </li>
+  );
+}
+
+function KeySection({
+  keyItem,
+  isExpanded,
+  onToggleExpand,
+  visibleSubGoals,
+  totalCount,
+  isSearching,
+  isAdding,
+  onStartAdd,
+  onCancelAdd,
+  addTitle,
+  addDescription,
+  onAddTitleChange,
+  onAddDescriptionChange,
+  onSubmitAdd,
+  addPending,
+  addError,
+}: {
+  keyItem: AssignmentKey;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  visibleSubGoals: AssignmentSubGoal[];
+  totalCount: number;
+  isSearching: boolean;
+  isAdding: boolean;
+  onStartAdd: () => void;
+  onCancelAdd: () => void;
+  addTitle: string;
+  addDescription: string;
+  onAddTitleChange: (value: string) => void;
+  onAddDescriptionChange: (value: string) => void;
+  onSubmitAdd: (event: FormEvent<HTMLFormElement>) => void;
+  addPending: boolean;
+  addError: string;
+}) {
+  return (
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-expanded={isExpanded}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+          <span className="min-w-0 truncate">
+            <span className="font-semibold text-slate-900">{keyLabel(keyItem.code)}</span>
+            <span className="ml-2 text-sm text-slate-500">· {totalCount} Sub Goal{totalCount === 1 ? '' : 's'}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onStartAdd}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50"
+        >
+          <Plus size={14} />Add Sub Goal
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="border-t border-slate-100 px-5 py-4">
+          {isAdding && (
+            <form onSubmit={onSubmitAdd} className="mb-4 rounded-lg bg-blue-50/60 p-3">
+              <input required autoFocus value={addTitle} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => onAddTitleChange(event.target.value)} placeholder="Sub goal title" className={inputClass} />
+              <textarea value={addDescription} maxLength={2000} rows={2} onChange={(event) => onAddDescriptionChange(event.target.value)} placeholder="Optional description" className={inputClass} />
+              {addError && <p className="mt-2 text-xs text-red-600">{addError}</p>}
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" onClick={onCancelAdd} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button disabled={addPending} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{addPending ? 'Adding...' : 'Add Sub Goal'}</button>
+              </div>
+            </form>
+          )}
+
+          {visibleSubGoals.length ? (
+            <ul className="divide-y divide-slate-100">
+              {visibleSubGoals.map((subGoal) => <SubGoalItem key={subGoal.id} subGoal={subGoal} />)}
+            </ul>
+          ) : (
+            <p className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">
+              {isSearching ? 'No sub goals match your search.' : 'No sub goals yet.'}
+            </p>
+          )}
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-    </li>
+    </article>
   );
 }
 
 function SubGoalManager({ keys }: { keys: AssignmentKey[] }) {
   const router = useRouter();
+  const [search, setSearch] = useState('');
+  const [expandedKeyId, setExpandedKeyId] = useState<string | undefined>(keys[0]?.id);
   const [addingToKeyId, setAddingToKeyId] = useState<string>();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+
+  const query = search.trim().toLowerCase();
+  const isSearching = query.length > 0;
+
+  function visibleSubGoals(key: AssignmentKey): AssignmentSubGoal[] {
+    if (!isSearching) return key.subGoals;
+    return key.subGoals.filter((subGoal) => (
+      subGoal.title.toLowerCase().includes(query) || (subGoal.description ?? '').toLowerCase().includes(query)
+    ));
+  }
+
+  function startAdd(keyId: string) {
+    setAddingToKeyId((current) => (current === keyId ? undefined : keyId));
+    setTitle('');
+    setDescription('');
+    setError('');
+    setExpandedKeyId(keyId);
+  }
 
   async function addSubGoal(event: FormEvent<HTMLFormElement>, keyId: string) {
     event.preventDefault();
@@ -145,36 +307,55 @@ function SubGoalManager({ keys }: { keys: AssignmentKey[] }) {
     }
   }
 
+  const noMatches = isSearching && keys.every((key) => visibleSubGoals(key).length === 0);
+
   return (
-    <section>
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">Keys & Sub Goals</h2>
-        <p className="mt-1 text-sm text-slate-500">The three keys are fixed. Add, edit, archive, or restore their sub goals here.</p>
+    <section className="mx-auto max-w-4xl">
+      <div className="relative mb-5">
+        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search sub goals..."
+          aria-label="Search sub goals"
+          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        />
       </div>
-      <div className="grid gap-4 xl:grid-cols-3">
-        {keys.map((key) => (
-          <article key={key.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-semibold text-slate-900">{keyLabel(key.code)}</h3>
-              <button type="button" onClick={() => { setAddingToKeyId(addingToKeyId === key.id ? undefined : key.id); setTitle(''); setDescription(''); setError(''); }} className="flex items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50"><Plus size={14} />Add Sub Goal</button>
-            </div>
 
-            {addingToKeyId === key.id && (
-              <form onSubmit={(event) => void addSubGoal(event, key.id)} className="mt-4 rounded-lg bg-blue-50/60 p-3">
-                <input required value={title} maxLength={SUB_GOAL_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} placeholder="Sub goal title" className={inputClass} />
-                <textarea value={description} maxLength={2000} rows={2} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" className={inputClass} />
-                {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-                <button disabled={pending} className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{pending ? 'Adding...' : 'Add Sub Goal'}</button>
-              </form>
-            )}
-
-            <ul className="mt-4 space-y-2">
-              {key.subGoals.map((subGoal) => <SubGoalItem key={subGoal.id} subGoal={subGoal} />)}
-            </ul>
-            {!key.subGoals.length && <p className="mt-4 rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">No sub goals yet.</p>}
-          </article>
-        ))}
+      <div className="space-y-4">
+        {keys.map((key) => {
+          const matches = visibleSubGoals(key);
+          const expanded = isSearching ? matches.length > 0 : expandedKeyId === key.id;
+          return (
+            <KeySection
+              key={key.id}
+              keyItem={key}
+              isExpanded={expanded}
+              onToggleExpand={() => setExpandedKeyId((current) => (current === key.id ? undefined : key.id))}
+              visibleSubGoals={matches}
+              totalCount={key.subGoals.length}
+              isSearching={isSearching}
+              isAdding={addingToKeyId === key.id}
+              onStartAdd={() => startAdd(key.id)}
+              onCancelAdd={() => setAddingToKeyId(undefined)}
+              addTitle={title}
+              addDescription={description}
+              onAddTitleChange={setTitle}
+              onAddDescriptionChange={setDescription}
+              onSubmitAdd={(event) => void addSubGoal(event, key.id)}
+              addPending={pending}
+              addError={error}
+            />
+          );
+        })}
       </div>
+
+      {noMatches && (
+        <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+          No sub goals match &ldquo;{search.trim()}&rdquo;.
+        </p>
+      )}
     </section>
   );
 }
