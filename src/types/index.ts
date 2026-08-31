@@ -204,6 +204,16 @@ export interface ProjectAllocation {
   deadline?: string;
 }
 
+export interface MemberKeyAssignmentCounts {
+  total: number;
+  notStarted: number;
+  inProgress: number;
+  done: number;
+  onHold: number;
+  cancelled: number;
+  overdue: number;
+}
+
 export interface MemberWorkload {
   memberId: string;
   memberName: string;
@@ -219,6 +229,8 @@ export interface MemberWorkload {
   capacityStatus: CapacityStatus;
   availabilityStatus: AvailabilityStatus;
   activeProjects: ProjectAllocation[];
+  /** Member-wise workload from the key-wise assignment flow (key_assignments), via getUnifiedWorkReport. */
+  keyAssignmentCounts: MemberKeyAssignmentCounts;
 }
 
 export interface AttendanceRecord {

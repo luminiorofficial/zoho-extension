@@ -9,9 +9,10 @@ import type { Department } from '@/types';
 
 interface DepartmentsClientProps {
   initialDepartments: Department[];
+  assignmentCounts: Record<string, number>;
 }
 
-export default function DepartmentsClient({ initialDepartments }: DepartmentsClientProps) {
+export default function DepartmentsClient({ initialDepartments, assignmentCounts }: DepartmentsClientProps) {
   const router = useRouter();
   const departments = initialDepartments;
   const [editing, setEditing] = useState<Department | null | undefined>(undefined);
@@ -88,6 +89,7 @@ export default function DepartmentsClient({ initialDepartments }: DepartmentsCli
           <DepartmentCard
             key={department.id}
             department={department}
+            assignmentCount={assignmentCounts[department.id] ?? 0}
             onEdit={() => openForm(department)}
             onSetActive={(isActive) => setActive(department, isActive)}
           />

@@ -22,32 +22,41 @@ function HierarchyHeading({ children }: { children: ReactNode }) {
   );
 }
 
+type HierarchyColumn = 'project' | 'member';
+
 export default function AssignmentHierarchy({
   assignments,
   emptyMessage = 'No key assignments match this view.',
   highlightedAssignmentId,
   renderDataActions,
+  hideColumns = [],
 }: {
   assignments: KeyAssignment[];
   emptyMessage?: string;
   highlightedAssignmentId?: string;
   renderDataActions?: (assignment: KeyAssignment) => ReactNode;
+  /** Omit a column when the page context already implies it (e.g. the Member page implies the member). */
+  hideColumns?: HierarchyColumn[];
 }) {
   if (!assignments.length) {
     return <p className="text-sm text-slate-500">{emptyMessage}</p>;
   }
 
+  const showProject = !hideColumns.includes('project');
+  const showMember = !hideColumns.includes('member');
+  const minWidth = 1100 - (showProject ? 0 : 220) - (showMember ? 0 : 150);
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] text-left text-sm">
+        <table className="w-full text-left text-sm" style={{ minWidth }}>
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Key</th>
               <HierarchyHeading>Sub Goal</HierarchyHeading>
-              <HierarchyHeading>Project</HierarchyHeading>
+              {showProject && <HierarchyHeading>Project</HierarchyHeading>}
               <HierarchyHeading>Task</HierarchyHeading>
-              <HierarchyHeading>Member</HierarchyHeading>
+              {showMember && <HierarchyHeading>Member</HierarchyHeading>}
               <HierarchyHeading>Data</HierarchyHeading>
             </tr>
           </thead>
@@ -63,19 +72,23 @@ export default function AssignmentHierarchy({
                 <td className="px-4 py-4 text-slate-700">
                   {assignment.subGoalTitle}
                 </td>
-                <td className="px-4 py-4">
-                  <p className="font-medium text-slate-800">{assignment.projectName}</p>
-                  <p className="text-xs text-slate-500">{assignment.departmentName}</p>
-                </td>
+                {showProject && (
+                  <td className="px-4 py-4">
+                    <p className="font-medium text-slate-800">{assignment.projectName}</p>
+                    <p className="text-xs text-slate-500">{assignment.departmentName}</p>
+                  </td>
+                )}
                 <td className="px-4 py-4">
                   <p className="font-medium text-slate-800">{assignment.taskTitle}</p>
                   {assignment.taskCategory !== 'General' && (
                     <p className="text-xs text-slate-500">{assignment.taskCategory}</p>
                   )}
                 </td>
-                <td className="px-4 py-4 text-slate-700">
-                  {assignment.memberName}
-                </td>
+                {showMember && (
+                  <td className="px-4 py-4 text-slate-700">
+                    {assignment.memberName}
+                  </td>
+                )}
                 <td className="min-w-[230px] px-4 py-4">
                   <dl className="space-y-2 text-xs">
                     <div className="flex items-center justify-between gap-4">

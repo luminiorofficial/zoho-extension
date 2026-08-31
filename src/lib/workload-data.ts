@@ -5,8 +5,9 @@ import type { QueryResultRow } from 'pg';
 import { getCapacityStatus } from '@/lib/capacity';
 import { availabilityStatusLabel } from '@/lib/attendance-utils';
 import { db } from '@/lib/db';
+import { getUnifiedWorkReport } from '@/lib/unified-work-report';
 import { MEMBER_WORKLOAD_QUERY } from '@/lib/workload-query';
-import type { MemberWorkload, ProjectAllocation, ProjectStatus } from '@/types';
+import type { MemberKeyAssignmentCounts, MemberWorkload, ProjectAllocation, ProjectStatus } from '@/types';
 
 interface WorkloadRow extends QueryResultRow {
   member_id: string;
@@ -47,8 +48,39 @@ function mapAllocation(project: WorkloadRow['active_projects'][number]): Project
   };
 }
 
+function emptyKeyAssignmentCounts(): MemberKeyAssignmentCounts {
+  return { total: 0, notStarted: 0, inProgress: 0, done: 0, onHold: 0, cancelled: 0, overdue: 0 };
+}
+
+async function getKeyAssignmentCountsByMember(): Promise<Map<string, MemberKeyAssignmentCounts>> {
+  const report = await getUnifiedWorkReport();
+  const today = new Date().toISOString().slice(0, 10);
+  const countsByMember = new Map<string, MemberKeyAssignmentCounts>();
+
+  for (const item of report) {
+    const counts = countsByMember.get(item.member.id) ?? emptyKeyAssignmentCounts();
+    counts.total += 1;
+    switch (item.status) {
+      case 'Not Started': counts.notStarted += 1; break;
+      case 'In Progress': counts.inProgress += 1; break;
+      case 'Done': counts.done += 1; break;
+      case 'On Hold': counts.onHold += 1; break;
+      case 'Cancelled': counts.cancelled += 1; break;
+    }
+    if (item.status !== 'Done' && item.status !== 'Cancelled' && item.endDate < today) {
+      counts.overdue += 1;
+    }
+    countsByMember.set(item.member.id, counts);
+  }
+
+  return countsByMember;
+}
+
 export async function getMemberWorkloads(memberIds?: string[]): Promise<MemberWorkload[]> {
-  const result = await db.query<WorkloadRow>(MEMBER_WORKLOAD_QUERY, [memberIds?.length ? memberIds : null]);
+  const [result, keyAssignmentCountsByMember] = await Promise.all([
+    db.query<WorkloadRow>(MEMBER_WORKLOAD_QUERY, [memberIds?.length ? memberIds : null]),
+    getKeyAssignmentCountsByMember(),
+  ]);
 
   return result.rows.map((row) => {
     const metrics = {
@@ -70,6 +102,7 @@ export async function getMemberWorkloads(memberIds?: string[]): Promise<MemberWo
       capacityStatus: getCapacityStatus(metrics),
       availabilityStatus: availabilityStatusLabel(row.availability_status),
       activeProjects: row.active_projects.map(mapAllocation),
+      keyAssignmentCounts: keyAssignmentCountsByMember.get(row.member_id) ?? emptyKeyAssignmentCounts(),
     };
   });
 }

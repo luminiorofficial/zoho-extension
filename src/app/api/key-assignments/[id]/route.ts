@@ -1,7 +1,6 @@
-import { revalidatePath } from 'next/cache';
-
 import { db } from '@/lib/db';
 import { isDate, isUuid } from '@/lib/planner-validation';
+import { revalidateKeyAssignmentViews } from '@/lib/revalidate-assignments';
 
 interface AssignmentPatchPayload {
   keyId?: unknown;
@@ -31,14 +30,11 @@ const statuses = new Set([
 ]);
 
 function refreshScope(scope: AssignmentScope) {
-  revalidatePath(`/departments/${scope.department_id}`);
-  revalidatePath(`/projects/${scope.project_id}`);
-  revalidatePath(`/members/${scope.member_id}`);
-}
-
-function refreshSharedViews() {
-  revalidatePath('/keys');
-  revalidatePath('/reports');
+  revalidateKeyAssignmentViews({
+    departmentId: scope.department_id,
+    projectId: scope.project_id,
+    memberId: scope.member_id,
+  });
 }
 
 async function assignmentScope(id: string): Promise<AssignmentScope | undefined> {
@@ -134,7 +130,6 @@ export async function PATCH(
     const updated = result.rows[0];
     if (!updated) return Response.json({ error: 'Assignment not found.' }, { status: 404 });
 
-    refreshSharedViews();
     refreshScope(previous);
     refreshScope(updated);
     return Response.json({ assignment: { id } });
@@ -170,7 +165,6 @@ export async function DELETE(
     );
     if (!result.rows[0]) return Response.json({ error: 'Assignment not found.' }, { status: 404 });
 
-    refreshSharedViews();
     refreshScope(previous);
     return Response.json({ deletedAssignmentId: id });
   } catch (error) {

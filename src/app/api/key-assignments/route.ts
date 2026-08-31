@@ -1,7 +1,6 @@
-import { revalidatePath } from 'next/cache';
-
 import { db } from '@/lib/db';
 import { isDate, isUuid } from '@/lib/planner-validation';
+import { revalidateKeyAssignmentViews } from '@/lib/revalidate-assignments';
 
 interface AssignmentPayload {
   keyId?: unknown;
@@ -21,14 +20,6 @@ const statuses = new Set([
   'ON_HOLD',
   'CANCELLED',
 ]);
-
-function refreshAssignmentViews(departmentId: string, projectId: string, memberId: string) {
-  revalidatePath('/keys');
-  revalidatePath('/reports');
-  revalidatePath(`/departments/${departmentId}`);
-  revalidatePath(`/projects/${projectId}`);
-  revalidatePath(`/members/${memberId}`);
-}
 
 export async function POST(request: Request) {
   let payload: AssignmentPayload;
@@ -84,7 +75,11 @@ export async function POST(request: Request) {
     );
 
     const assignment = result.rows[0];
-    refreshAssignmentViews(assignment.department_id, payload.projectId, payload.memberId);
+    revalidateKeyAssignmentViews({
+      departmentId: assignment.department_id,
+      projectId: payload.projectId,
+      memberId: payload.memberId,
+    });
     return Response.json({ assignment: { id: assignment.id } }, { status: 201 });
   } catch (error) {
     if (typeof error === 'object' && error && 'code' in error && error.code === '23514') {

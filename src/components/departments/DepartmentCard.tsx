@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  CheckSquare,
   Pencil,
   Target,
   ToggleLeft,
@@ -12,12 +13,14 @@ import ProgressBar from '@/components/common/ProgressBar';
 import type { DepartmentCardProps } from '@/types';
 
 interface EditableDepartmentCardProps extends DepartmentCardProps {
+  assignmentCount?: number;
   onEdit?: () => void;
   onSetActive?: (isActive: boolean) => void;
 }
 
 export default function DepartmentCard({
   department,
+  assignmentCount = 0,
   onEdit,
   onSetActive,
 }: EditableDepartmentCardProps) {
@@ -49,7 +52,7 @@ export default function DepartmentCard({
 
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <div className="mt-5 grid grid-cols-3 gap-3">
 
         <div className="rounded-lg bg-slate-50 p-3">
           <div className="flex items-center gap-2 text-slate-500">
@@ -74,6 +77,19 @@ export default function DepartmentCard({
 
           <p className="mt-1 text-lg font-semibold text-slate-900">
             {department.goals.length}
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-slate-50 p-3">
+          <div className="flex items-center gap-2 text-slate-500">
+            <CheckSquare size={16} />
+            <span className="text-xs">
+              Assignments
+            </span>
+          </div>
+
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {assignmentCount}
           </p>
         </div>
 

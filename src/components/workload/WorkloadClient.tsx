@@ -100,6 +100,11 @@ export default function WorkloadClient({ workloads, departments }: WorkloadClien
                     {workload.overdueTaskCount} overdue open task{workload.overdueTaskCount === 1 ? '' : 's'}
                   </span>
                 )}
+                {workload.keyAssignmentCounts.overdue > 0 && (
+                  <span className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    {workload.keyAssignmentCounts.overdue} overdue key assignment{workload.keyAssignmentCounts.overdue === 1 ? '' : 's'}
+                  </span>
+                )}
                 {['Absent', 'Approved Leave'].includes(workload.availabilityStatus) && (
                   <span className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                     Unavailable today — avoid new assignments
@@ -112,6 +117,21 @@ export default function WorkloadClient({ workloads, departments }: WorkloadClien
                 <div className="rounded-lg bg-slate-50 p-3"><p className="flex items-center gap-1.5 text-xs text-slate-500"><CircleGauge size={14} /> Open tasks</p><p className="mt-1 text-xl font-bold text-slate-900">{workload.openTaskCount}</p></div>
                 <div className="rounded-lg bg-slate-50 p-3"><p className="flex items-center gap-1.5 text-xs text-slate-500"><CalendarClock size={14} /> Due this week</p><p className="mt-1 text-xl font-bold text-slate-900">{workload.dueThisWeekTaskCount}</p></div>
                 <div className="rounded-lg bg-slate-50 p-3"><p className="flex items-center gap-1.5 text-xs text-slate-500"><CheckCircle2 size={14} /> Completed this week</p><p className="mt-1 text-xl font-bold text-slate-900">{workload.completedThisWeekTaskCount}</p></div>
+              </div>
+
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Key assignment workload</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <Link href={`/members/${workload.memberId}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-100">
+                    {workload.keyAssignmentCounts.total} total
+                  </Link>
+                  {workload.keyAssignmentCounts.notStarted > 0 && <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">{workload.keyAssignmentCounts.notStarted} not started</span>}
+                  {workload.keyAssignmentCounts.inProgress > 0 && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">{workload.keyAssignmentCounts.inProgress} in progress</span>}
+                  {workload.keyAssignmentCounts.done > 0 && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{workload.keyAssignmentCounts.done} done</span>}
+                  {workload.keyAssignmentCounts.onHold > 0 && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{workload.keyAssignmentCounts.onHold} on hold</span>}
+                  {workload.keyAssignmentCounts.cancelled > 0 && <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-700">{workload.keyAssignmentCounts.cancelled} cancelled</span>}
+                  {workload.keyAssignmentCounts.total === 0 && <span className="text-slate-500">No key assignments yet.</span>}
+                </div>
               </div>
 
               <div className="mt-5 border-t border-slate-100 pt-4">

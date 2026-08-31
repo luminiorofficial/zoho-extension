@@ -43,26 +43,66 @@ export default async function DashboardPage() {
 
 const totalMembers = activeMembers.length;
 
-  const overallProgress =
-    departments.length > 0
-      ? Math.round(
-          departments.reduce(
-            (total, department) => total + department.progress,
-            0
-          ) / departments.length
-        )
-      : 0;
+  // Department progress is derived from key_assignments (the same shared read
+  // source as Members/Projects/Reports/Workload), not the old Goal/Action hierarchy.
+  const departmentAssignmentStats = new Map<
+    string,
+    { name: string; totalAssignments: number; doneAssignments: number }
+  >();
+  for (const department of departments) {
+    departmentAssignmentStats.set(department.id, {
+      name: department.name,
+      totalAssignments: 0,
+      doneAssignments: 0,
+    });
+  }
+  for (const assignment of assignments) {
+    const departmentId = assignment.project.departmentId;
+    const stat = departmentAssignmentStats.get(departmentId) ?? {
+      name: assignment.project.departmentName,
+      totalAssignments: 0,
+      doneAssignments: 0,
+    };
+    stat.totalAssignments += 1;
+    if (assignment.status === 'Done') stat.doneAssignments += 1;
+    departmentAssignmentStats.set(departmentId, stat);
+  }
+
+  const departmentPerformance = [...departmentAssignmentStats.entries()].map(
+    ([id, stat]) => ({
+      id,
+      name: stat.name,
+      totalAssignments: stat.totalAssignments,
+      progress:
+        stat.totalAssignments > 0
+          ? Math.round((stat.doneAssignments / stat.totalAssignments) * 100)
+          : 0,
+    })
+  );
 
   // Sort departments by progress
-  const sortedDepartments = [...departments].sort(
+  const sortedDepartments = [...departmentPerformance].sort(
     (a, b) => b.progress - a.progress
   );
 
-  const topDepartment = sortedDepartments[0] ?? null;
+  const rankedDepartments = sortedDepartments.filter(
+    (department) => department.totalAssignments > 0
+  );
+
+  const overallProgress =
+    assignments.length > 0
+      ? Math.round(
+          (assignments.filter((assignment) => assignment.status === 'Done').length /
+            assignments.length) *
+            100
+        )
+      : 0;
+
+  const topDepartment = rankedDepartments[0] ?? null;
 
   const needsAttention =
-    sortedDepartments.length > 0
-      ? sortedDepartments[sortedDepartments.length - 1]
+    rankedDepartments.length > 0
+      ? rankedDepartments[rankedDepartments.length - 1]
       : null;
 
   const stats = [
@@ -345,7 +385,7 @@ const totalMembers = activeMembers.length;
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
 
                       <span>
-                        {department.goals.length} goals
+                        {department.totalAssignments} assignment{department.totalAssignments === 1 ? '' : 's'}
                       </span>
 
                       <span>•</span>
